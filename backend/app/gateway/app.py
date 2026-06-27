@@ -19,6 +19,7 @@ from app.gateway.routers import (
     channel_connections,
     channels,
     feedback,
+    extensions,
     mcp,
     memory,
     models,
@@ -321,6 +322,10 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
                 "description": "Create and manage custom agents with per-agent config and prompts",
             },
             {
+                "name": "extensions",
+                "description": "Discover dynamically configured agents, MCP servers, tools, and skills",
+            },
+            {
                 "name": "suggestions",
                 "description": "Generate follow-up question suggestions for conversations",
             },
@@ -386,6 +391,9 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # Agents API is mounted at /api/agents
     app.include_router(agents.router)
+
+    # Extensions API is mounted at /api/extensions
+    app.include_router(extensions.router)
 
     # Suggestions API is mounted at /api/threads/{thread_id}/suggestions
     app.include_router(suggestions.router)
