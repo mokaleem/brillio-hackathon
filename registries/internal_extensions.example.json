@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "imports": [
+    {
+      "name": "internal-agents",
+      "kind": "agent",
+      "type": "directory",
+      "path": "internal_agents"
+    },
+    {
+      "name": "internal-mcps",
+      "kind": "mcp",
+      "type": "directory",
+      "path": "internal_mcps"
+    },
+    {
+      "name": "internal-tools",
+      "kind": "tool",
+      "type": "directory",
+      "path": "internal_tools"
+    },
+    {
+      "name": "internal-skills",
+      "kind": "skill",
+      "type": "directory",
+      "path": "internal_skills"
+    }
+  ],
+  "extensions": [
+    {
+      "kind": "tool",
+      "name": "html-report",
+      "enabled": true,
+      "source": "local",
+      "entrypoint": "internal_tools.reporting:html_report_tool",
+      "description": "Generate a self-contained HTML report",
+      "tags": ["reporting", "artifact"],
+      "risk_level": "low",
+      "display_name": "HTML Report",
+      "category": "Reporting"
+    },
+    {
+      "kind": "tool",
+      "name": "csv-export",
+      "enabled": true,
+      "source": "local",
+      "entrypoint": "internal_tools.reporting:csv_export_tool",
+      "description": "Generate CSV files from structured rows",
+      "tags": ["reporting", "data"],
+      "risk_level": "low",
+      "display_name": "CSV Export",
+      "category": "Reporting"
+    },
+    {
+      "kind": "skill",
+      "name": "market-research",
+      "enabled": false,
+      "source": "local",
+      "entrypoint": "internal_skills/market-research",
+      "description": "Research market context from approved sources",
+      "allowed_tools": ["web_search", "html-report", "csv-export"],
+      "tags": ["research"],
+      "risk_level": "medium",
+      "display_name": "Market Research",
+      "category": "Research"
+    }
+  ]
+}

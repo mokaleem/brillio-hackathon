@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "imports": [
+    {
+      "name": "company-approved-registry",
+      "kind": "tool",
+      "type": "registry",
+      "url": "https://registry.example.com/deerflow/tools.json",
+      "enabled": false,
+      "metadata": {
+        "owner": "platform-ai",
+        "note": "Disabled by default. Mirror and verify external manifests before enabling."
+      }
+    }
+  ],
+  "extensions": []
+}

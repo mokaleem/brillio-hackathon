@@ -180,3 +180,13 @@ def test_catalog_rejects_duplicate_kind_and_name(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Duplicate extension"):
         load_extension_catalog([first, second], repo_root=tmp_path)
+
+
+def test_example_internal_extensions_manifest_loads() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    manifest_path = repo_root / "registries" / "internal_extensions.example.json"
+
+    catalog = load_extension_catalog([manifest_path], repo_root=repo_root)
+
+    assert [extension.name for extension in catalog.enabled(kind="tool")] == ["html-report", "csv-export"]
+    assert catalog.enabled(kind="skill") == []
