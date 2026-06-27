@@ -181,6 +181,19 @@ from deerflow.config import get_app_config
 # from app.gateway.routers.uploads import ...  # ← will fail CI
 ```
 
+### Internal Extension Registry
+
+The hackathon extension layer lives in the harness package under `packages/harness/deerflow/extensions/` and remains importable without FastAPI. It provides:
+- `ExtensionManifest` / `ExtensionDescriptor` models for `agent`, `mcp`, `tool`, and `skill` descriptors.
+- `load_extension_manifest()` and `load_extension_catalog()` for side-effect-free manifest loading and duplicate detection.
+- `resolve_python_entrypoint()` / `execute_python_entrypoint()` for explicit `module:function` execution.
+
+Company-owned extension implementations live outside the harness in `internal_agents/`, `internal_mcps/`, `internal_tools/`, and `internal_skills/`. Example manifests live under `registries/`, with `registries/internal_extensions.example.json` used by default.
+
+The Gateway exposes the catalog at `GET /api/extensions` and supports `?kind=agent|mcp|tool|skill`. Override the manifest list with `DEERFLOW_EXTENSION_MANIFESTS` using the OS path separator.
+
+Report artifact helpers live under `packages/harness/deerflow/artifacts/` and currently provide `generate_html_report`, `generate_csv_file`, and `generate_pdf_report`.
+
 ### Agent System
 
 **Lead Agent** (`packages/harness/deerflow/agents/lead_agent/agent.py`):

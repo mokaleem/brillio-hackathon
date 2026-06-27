@@ -62,6 +62,7 @@ DeerFlow has newly integrated the intelligent search and crawling toolset indepe
   - [From Deep Research to Super Agent Harness](#from-deep-research-to-super-agent-harness)
   - [Core Features](#core-features)
     - [Skills \& Tools](#skills--tools)
+    - [Internal Extension Registry](#internal-extension-registry)
       - [Claude Code Integration](#claude-code-integration)
     - [Sub-Agents](#sub-agents)
     - [Sandbox \& File System](#sandbox--file-system)
@@ -594,6 +595,14 @@ When you install `.skill` archives through the Gateway, DeerFlow accepts standar
 Tools follow the same philosophy. DeerFlow comes with a core toolset — web search, web fetch, file operations, bash execution — and supports custom tools via MCP servers and Python functions. Swap anything. Add anything.
 
 Gateway-generated follow-up suggestions now normalize both plain-string model output and block/list-style rich content before parsing the JSON array response, so provider-specific content wrappers do not silently drop suggestions.
+
+### Internal Extension Registry
+
+This fork adds a manifest-driven internal extension layer for company deployments. Agents, MCP servers, tools, and skills can be declared in JSON manifests under `registries/` while their implementations live outside the harness in `internal_agents/`, `internal_mcps/`, `internal_tools/`, and `internal_skills/`.
+
+The reusable harness package exposes `deerflow.extensions` for loading manifests, resolving importable Python entrypoints, and querying enabled extensions. The Gateway exposes the same catalog over `GET /api/extensions`, with optional `?kind=agent|mcp|tool|skill` filtering, so the web UI or a separate UI codebase can discover available capabilities without importing backend code.
+
+Report helpers are available from `deerflow.artifacts` for generating HTML, CSV, and minimal PDF artifacts from Python code.
 
 ```
 # Paths inside the sandbox container
