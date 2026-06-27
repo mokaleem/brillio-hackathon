@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import csv
 import html
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any
 
 
 def generate_html_report(*, title: str, sections: Sequence[tuple[str, str]], output_path: Path | str) -> Path:

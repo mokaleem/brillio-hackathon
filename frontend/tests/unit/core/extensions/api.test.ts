@@ -9,7 +9,7 @@ rs.mock("@/core/config", () => ({
 }));
 
 import { fetch as fetcher } from "@/core/api/fetcher";
-import { ExtensionRequestError, loadExtensions } from "@/core/extensions/api";
+import { loadExtensions } from "@/core/extensions/api";
 
 const mockedFetch = rs.mocked(fetcher);
 
