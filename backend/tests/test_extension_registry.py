@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from deerflow.extensions import ExtensionKind, ExtensionManifest, ExtensionSource, load_extension_catalog, load_extension_manifest
+from deerflow.extensions import ExtensionKind, ExtensionManifest, ExtensionSource, execute_python_entrypoint, load_extension_catalog, load_extension_manifest
 
 
 def test_manifest_parses_minimal_tool_descriptor() -> None:
@@ -190,3 +190,12 @@ def test_example_internal_extensions_manifest_loads() -> None:
 
     assert [extension.name for extension in catalog.enabled(kind="tool")] == ["html-report", "csv-export"]
     assert catalog.enabled(kind="skill") == []
+
+
+def test_execute_python_entrypoint_calls_importable_function() -> None:
+    assert execute_python_entrypoint("math:sqrt", 81) == 9
+
+
+def test_execute_python_entrypoint_rejects_malformed_entrypoint() -> None:
+    with pytest.raises(ValueError, match="module:function"):
+        execute_python_entrypoint("math.sqrt")
