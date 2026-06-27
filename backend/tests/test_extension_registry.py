@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from deerflow.extensions import ExtensionKind, ExtensionManifest, ExtensionSource
+from deerflow.extensions import ExtensionKind, ExtensionManifest, ExtensionSource, load_extension_catalog, load_extension_manifest
 
 
 def test_manifest_parses_minimal_tool_descriptor() -> None:
@@ -84,3 +84,99 @@ def test_import_rejects_path_escape(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="within the repository"):
         manifest.imports[0].resolve_path(tmp_path)
+
+
+def test_load_extension_manifest_from_json(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "extensions.json"
+    manifest_path.write_text(
+        """
+        {
+          "version": 1,
+          "extensions": [
+            {
+              "kind": "skill",
+              "name": "market-research",
+              "enabled": true,
+              "source": "local",
+              "entrypoint": "internal_skills/market-research",
+              "description": "Research market context"
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    manifest = load_extension_manifest(manifest_path)
+
+    assert manifest.extensions[0].kind is ExtensionKind.SKILL
+    assert manifest.extensions[0].name == "market-research"
+
+
+def test_load_extension_manifest_missing_file_fails_closed(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        load_extension_manifest(tmp_path / "missing.json")
+
+
+def test_catalog_filters_enabled_extensions(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "extensions.json"
+    manifest_path.write_text(
+        """
+        {
+          "version": 1,
+          "extensions": [
+            {
+              "kind": "tool",
+              "name": "html-report",
+              "enabled": true,
+              "source": "local",
+              "entrypoint": "internal_tools.reporting:html_report_tool"
+            },
+            {
+              "kind": "tool",
+              "name": "disabled-tool",
+              "enabled": false,
+              "source": "local",
+              "entrypoint": "internal_tools.disabled:tool"
+            },
+            {
+              "kind": "agent",
+              "name": "finance-agent",
+              "enabled": true,
+              "source": "local",
+              "entrypoint": "internal_agents.finance:create_agent"
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    catalog = load_extension_catalog([manifest_path], repo_root=tmp_path)
+
+    assert [extension.name for extension in catalog.enabled(kind="tool")] == ["html-report"]
+    assert [extension.name for extension in catalog.enabled(kind="agent")] == ["finance-agent"]
+
+
+def test_catalog_rejects_duplicate_kind_and_name(tmp_path: Path) -> None:
+    first = tmp_path / "first.json"
+    second = tmp_path / "second.json"
+    manifest = """
+    {
+      "version": 1,
+      "extensions": [
+        {
+          "kind": "tool",
+          "name": "html-report",
+          "enabled": true,
+          "source": "local",
+          "entrypoint": "internal_tools.reporting:html_report_tool"
+        }
+      ]
+    }
+    """
+    first.write_text(manifest, encoding="utf-8")
+    second.write_text(manifest, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Duplicate extension"):
+        load_extension_catalog([first, second], repo_root=tmp_path)
