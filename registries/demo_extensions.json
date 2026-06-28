@@ -33,11 +33,14 @@
       "enabled": true,
       "source": "local",
       "entrypoint": "internal_tools.reporting:html_report",
-      "description": "Generate a self-contained HTML report",
+      "description": "Generate a self-contained HTML report artifact",
       "tags": ["reporting", "artifact"],
       "risk_level": "low",
       "display_name": "HTML Report",
-      "category": "Reporting"
+      "category": "Reporting",
+      "metadata": {
+        "group": "reporting"
+      }
     },
     {
       "kind": "tool",
@@ -45,24 +48,14 @@
       "enabled": true,
       "source": "local",
       "entrypoint": "internal_tools.reporting:csv_export",
-      "description": "Generate CSV files from structured rows",
+      "description": "Generate a CSV artifact from structured JSON rows",
       "tags": ["reporting", "data"],
       "risk_level": "low",
       "display_name": "CSV Export",
-      "category": "Reporting"
-    },
-    {
-      "kind": "skill",
-      "name": "market-research",
-      "enabled": false,
-      "source": "local",
-      "entrypoint": "internal_skills/market-research",
-      "description": "Research market context from approved sources",
-      "allowed_tools": ["web_search", "html-report", "csv-export"],
-      "tags": ["research"],
-      "risk_level": "medium",
-      "display_name": "Market Research",
-      "category": "Research"
+      "category": "Reporting",
+      "metadata": {
+        "group": "reporting"
+      }
     }
   ]
 }

@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import pytest
@@ -226,6 +227,68 @@ def test_runtime_catalog_uses_env_manifest(monkeypatch, tmp_path: Path) -> None:
     assert [extension.name for extension in catalog.enabled(kind="tool")] == ["company-metric-tool"]
 
 
+def test_runtime_catalog_resolves_relative_env_manifest_against_project_root(monkeypatch, tmp_path: Path) -> None:
+    manifest_path = tmp_path / "registries" / "extensions.json"
+    manifest_path.parent.mkdir()
+    manifest_path.write_text(
+        """
+        {
+          "version": 1,
+          "extensions": [
+            {
+              "kind": "tool",
+              "name": "company-metric-tool",
+              "enabled": true,
+              "source": "local",
+              "entrypoint": "tests.support.registry_tools:company_metric_tool"
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", "registries/extensions.json")
+
+    paths = get_runtime_extension_manifest_paths(repo_root=tmp_path)
+
+    assert paths == [manifest_path]
+
+
+def test_runtime_catalog_adds_project_root_to_python_path(monkeypatch, tmp_path: Path) -> None:
+    package_dir = tmp_path / "company_tools"
+    package_dir.mkdir()
+    (package_dir / "__init__.py").write_text("", encoding="utf-8")
+    (package_dir / "demo.py").write_text("def make_value():\n    return 'loaded'\n", encoding="utf-8")
+    manifest_path = tmp_path / "registries" / "extensions.json"
+    manifest_path.parent.mkdir()
+    manifest_path.write_text(
+        """
+        {
+          "version": 1,
+          "extensions": [
+            {
+              "kind": "agent",
+              "name": "demo-agent",
+              "enabled": true,
+              "source": "local",
+              "entrypoint": "company_tools.demo:make_value"
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
+    root_text = str(tmp_path.resolve(strict=False))
+    monkeypatch.setattr(sys, "path", [entry for entry in sys.path if entry != root_text])
+
+    catalog = load_runtime_extension_catalog(repo_root=tmp_path)
+    factory = materialize_agent_factory(catalog.enabled(kind="agent")[0])
+
+    assert factory() == "loaded"
+    assert sys.path[0] == root_text
+
+
 def test_runtime_catalog_is_empty_without_default_manifest(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("DEERFLOW_EXTENSION_MANIFESTS", raising=False)
 
@@ -243,6 +306,17 @@ def test_example_internal_extensions_manifest_loads() -> None:
 
     assert [extension.name for extension in catalog.enabled(kind="tool")] == ["html-report", "csv-export"]
     assert catalog.enabled(kind="skill") == []
+
+
+def test_example_internal_extensions_manifest_materializes_reporting_tools(monkeypatch) -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    monkeypatch.syspath_prepend(str(repo_root))
+    manifest_path = repo_root / "registries" / "internal_extensions.example.json"
+
+    catalog = load_extension_catalog([manifest_path], repo_root=repo_root)
+    tools = [materialize_tool(extension) for extension in catalog.enabled(kind="tool")]
+
+    assert [tool.name for tool in tools] == ["html_report", "csv_export"]
 
 
 def test_execute_python_entrypoint_calls_importable_function() -> None:
