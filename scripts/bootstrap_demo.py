@@ -84,6 +84,7 @@ tools:
 tool_groups:
   - name: search
   - name: reporting
+  - name: python
 
 tool_search:
   enabled: true
@@ -193,6 +194,19 @@ def _demo_registry() -> dict:
                 "display_name": "PDF Report",
                 "category": "Reporting",
                 "metadata": {"group": "reporting"},
+            },
+            {
+                "kind": "tool",
+                "name": "python-function",
+                "enabled": True,
+                "source": "local",
+                "entrypoint": "internal_tools.python_runner:python_function",
+                "description": "Execute allowlisted importable Python functions with JSON args and kwargs",
+                "tags": ["python", "automation"],
+                "risk_level": "medium",
+                "display_name": "Python Function",
+                "category": "Automation",
+                "metadata": {"group": "python"},
             },
             {
                 "kind": "mcp",

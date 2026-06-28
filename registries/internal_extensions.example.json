@@ -78,6 +78,21 @@
       "category": "Reporting"
     },
     {
+      "kind": "tool",
+      "name": "python-function",
+      "enabled": true,
+      "source": "local",
+      "entrypoint": "internal_tools.python_runner:python_function",
+      "description": "Execute allowlisted importable Python functions with JSON args and kwargs",
+      "tags": ["python", "automation"],
+      "risk_level": "medium",
+      "display_name": "Python Function",
+      "category": "Automation",
+      "metadata": {
+        "group": "python"
+      }
+    },
+    {
       "kind": "mcp",
       "name": "local-docs",
       "enabled": false,
