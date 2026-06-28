@@ -119,6 +119,7 @@ export interface Translations {
     chats: string;
     demoChats: string;
     agents: string;
+    extensions: string;
     channels: string;
   };
 
