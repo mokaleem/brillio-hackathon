@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from langchain_core.tools import tool
 
-from deerflow.artifacts import generate_csv_file, generate_html_report
+from deerflow.artifacts import generate_csv_file, generate_html_report, generate_pdf_report
 from deerflow.config.runtime_paths import runtime_home
 
 
@@ -27,6 +27,16 @@ def csv_export(rows_json: str) -> str:
     output_path = _artifact_path(f"csv-export-{uuid4().hex[:8]}.csv")
     generated = generate_csv_file(rows=rows, output_path=output_path)
     return f"CSV file generated: {generated}"
+
+
+@tool("pdf_report")
+def pdf_report(title: str, sections_json: str) -> str:
+    """Generate a PDF report from JSON sections."""
+    sections = _parse_sections(sections_json)
+    lines = _sections_to_pdf_lines(sections)
+    output_path = _artifact_path(f"pdf-report-{uuid4().hex[:8]}.pdf")
+    generated = generate_pdf_report(title=title, lines=lines, output_path=output_path)
+    return f"PDF report generated: {generated}"
 
 
 def _artifact_path(filename: str) -> Path:
@@ -55,3 +65,12 @@ def _parse_rows(payload: str) -> list[dict[str, Any]]:
             raise ValueError("Each CSV row must be a JSON object.")
         rows.append(dict(item))
     return rows
+
+
+def _sections_to_pdf_lines(sections: list[tuple[str, str]]) -> list[str]:
+    lines: list[str] = []
+    for title, body in sections:
+        lines.append(title)
+        lines.extend(line for line in body.splitlines() if line.strip())
+        lines.append("")
+    return lines

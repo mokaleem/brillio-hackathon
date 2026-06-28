@@ -305,7 +305,7 @@ def test_example_internal_extensions_manifest_loads() -> None:
     catalog = load_extension_catalog([manifest_path], repo_root=repo_root)
 
     assert [extension.name for extension in catalog.enabled(kind="agent")] == ["reporting-agent"]
-    assert [extension.name for extension in catalog.enabled(kind="tool")] == ["html-report", "csv-export"]
+    assert [extension.name for extension in catalog.enabled(kind="tool")] == ["html-report", "csv-export", "pdf-report"]
     assert catalog.enabled(kind="skill") == []
 
 
@@ -317,7 +317,7 @@ def test_example_internal_extensions_manifest_materializes_reporting_tools(monke
     catalog = load_extension_catalog([manifest_path], repo_root=repo_root)
     tools = [materialize_tool(extension) for extension in catalog.enabled(kind="tool")]
 
-    assert [tool.name for tool in tools] == ["html_report", "csv_export"]
+    assert [tool.name for tool in tools] == ["html_report", "csv_export", "pdf_report"]
 
 
 def test_execute_python_entrypoint_calls_importable_function() -> None:

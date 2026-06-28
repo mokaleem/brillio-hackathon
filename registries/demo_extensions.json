@@ -72,6 +72,24 @@
       }
     },
     {
+      "kind": "tool",
+      "name": "pdf-report",
+      "enabled": true,
+      "source": "local",
+      "entrypoint": "internal_tools.reporting:pdf_report",
+      "description": "Generate a PDF report from structured report sections",
+      "tags": [
+        "reporting",
+        "artifact"
+      ],
+      "risk_level": "low",
+      "display_name": "PDF Report",
+      "category": "Reporting",
+      "metadata": {
+        "group": "reporting"
+      }
+    },
+    {
       "kind": "mcp",
       "name": "local-docs",
       "enabled": false,
