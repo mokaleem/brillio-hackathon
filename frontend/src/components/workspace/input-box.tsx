@@ -88,6 +88,7 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 
+import { CapabilityMenu } from "./capability-menu";
 import { useThread } from "./messages/context";
 import { ModeHoverGuide } from "./mode-hover-guide";
 import { Tooltip } from "./tooltip";
@@ -581,6 +582,23 @@ export function InputBox({
     [textInput],
   );
 
+  const insertCapabilityPrompt = useCallback(
+    (prompt: string) => {
+      const current = (textInput.value ?? "").trimEnd();
+      const nextValue = current ? `${current}\n${prompt}` : prompt;
+      textInput.setInput(nextValue);
+      requestAnimationFrame(() => {
+        const textarea = textareaRef.current;
+        if (!textarea) {
+          return;
+        }
+        textarea.focus();
+        textarea.setSelectionRange(nextValue.length, nextValue.length);
+      });
+    },
+    [textInput],
+  );
+
   const handlePromptHistoryKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       if (
@@ -889,6 +907,10 @@ export function InputBox({
             </PromptInputActionMenuContent>
           </PromptInputActionMenu> */}
             <AddAttachmentsButton className="px-2!" />
+            <CapabilityMenu
+              disabled={disabled}
+              onInsertPrompt={insertCapabilityPrompt}
+            />
             <PromptInputActionMenu>
               <ModeHoverGuide
                 mode={
