@@ -195,6 +195,8 @@ The Gateway exposes the catalog at `GET /api/extensions` and supports `?kind=age
 
 Enabled `tool` descriptors are materialized and appended by `deerflow.tools.tools.get_available_tools()`, after configured tools and before built-ins, MCP tools, and ACP tools. This keeps registry tools available to orchestration while preserving existing duplicate-name precedence.
 
+The run worker synthesizes `event: events` SSE frames when `events` is requested in stream mode. These frames carry LangChain-shaped orchestration events (`on_run_start`, chunk stream events, `on_run_end`) without dropping the normal `values` snapshots used by the UI.
+
 Report artifact helpers live under `packages/harness/deerflow/artifacts/` and currently provide `generate_html_report`, `generate_csv_file`, and `generate_pdf_report`.
 
 ### Agent System

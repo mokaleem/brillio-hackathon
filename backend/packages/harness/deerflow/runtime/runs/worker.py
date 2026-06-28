@@ -40,6 +40,8 @@ logger = logging.getLogger(__name__)
 
 # Valid stream_mode values for LangGraph's graph.astream()
 _VALID_LG_MODES = {"values", "updates", "checkpoints", "tasks", "debug", "messages", "custom"}
+_ORCHESTRATION_EVENT_SOURCE = "deerflow.orchestration"
+_ORCHESTRATION_EVENT_MODES = {"updates", "messages", "tasks", "debug", "checkpoints"}
 
 
 def _build_runtime_context(
@@ -144,19 +146,13 @@ async def run_agent(
     run_id = record.run_id
     thread_id = record.thread_id
     requested_modes: set[str] = set(stream_modes or ["values"])
+    emit_orchestration_events = "events" in requested_modes
     pre_run_checkpoint_id: str | None = None
     pre_run_snapshot: dict[str, Any] | None = None
     snapshot_capture_failed = False
     llm_error_fallback_message: str | None = None
 
     journal = None
-
-    # Track whether "events" was requested but skipped
-    if "events" in requested_modes:
-        logger.info(
-            "Run %s: 'events' stream_mode not supported in gateway (requires astream_events + checkpoint callbacks). Skipping.",
-            run_id,
-        )
 
     try:
         # Initialize RunJournal + write human_message event.
@@ -288,6 +284,8 @@ async def run_agent(
                 continue
             elif m in _VALID_LG_MODES:
                 lg_modes.append(m)
+        if emit_orchestration_events and "updates" not in lg_modes:
+            lg_modes.append("updates")
         if not lg_modes:
             lg_modes = ["values"]
 
@@ -301,6 +299,15 @@ async def run_agent(
         lg_modes = deduped
 
         logger.info("Run %s: streaming with modes %s (requested: %s)", run_id, lg_modes, requested_modes)
+        if emit_orchestration_events:
+            await _publish_orchestration_event(
+                bridge,
+                run_id,
+                event="on_run_start",
+                name=str(config.get("run_name") or record.assistant_id or "lead_agent"),
+                data={"input": serialize(graph_input)},
+                metadata={"thread_id": thread_id, "requested_modes": sorted(requested_modes)},
+            )
 
         # 7. Stream using graph.astream
         if len(lg_modes) == 1 and not stream_subgraphs:
@@ -312,7 +319,10 @@ async def run_agent(
                     break
                 llm_error_fallback_message = llm_error_fallback_message or _extract_llm_error_fallback_message(chunk)
                 sse_event = _lg_mode_to_sse_event(single_mode)
-                await bridge.publish(run_id, sse_event, serialize(chunk, mode=single_mode))
+                serialized_chunk = serialize(chunk, mode=single_mode)
+                await bridge.publish(run_id, sse_event, serialized_chunk)
+                if emit_orchestration_events:
+                    await _publish_orchestration_chunk_event(bridge, run_id, single_mode, serialized_chunk)
         else:
             # Multiple modes or subgraphs: astream yields tuples
             async for item in agent.astream(
@@ -331,7 +341,10 @@ async def run_agent(
 
                 llm_error_fallback_message = llm_error_fallback_message or _extract_llm_error_fallback_message(chunk)
                 sse_event = _lg_mode_to_sse_event(mode)
-                await bridge.publish(run_id, sse_event, serialize(chunk, mode=mode))
+                serialized_chunk = serialize(chunk, mode=mode)
+                await bridge.publish(run_id, sse_event, serialized_chunk)
+                if emit_orchestration_events:
+                    await _publish_orchestration_chunk_event(bridge, run_id, mode, serialized_chunk)
 
         # 8. Final status
         if record.abort_event.is_set():
@@ -385,6 +398,14 @@ async def run_agent(
         error_msg = f"{exc}"
         logger.exception("Run %s failed: %s", run_id, error_msg)
         await run_manager.set_status(run_id, RunStatus.error, error=error_msg)
+        if emit_orchestration_events:
+            await _publish_orchestration_event(
+                bridge,
+                run_id,
+                event="on_run_error",
+                name=str(config.get("run_name") or record.assistant_id or "lead_agent"),
+                data={"error": error_msg, "error_type": type(exc).__name__},
+            )
         await bridge.publish(
             run_id,
             "error",
@@ -430,6 +451,15 @@ async def run_agent(
             except Exception:
                 logger.debug("Failed to update thread_meta status for %s (non-fatal)", thread_id)
 
+        if emit_orchestration_events:
+            await _publish_orchestration_event(
+                bridge,
+                run_id,
+                event="on_run_end",
+                name=str(config.get("run_name") or record.assistant_id or "lead_agent"),
+                data={"status": record.status.value, "error": record.error},
+                metadata={"thread_id": thread_id},
+            )
         await bridge.publish_end(run_id)
         asyncio.create_task(bridge.cleanup(run_id, delay=60))
 
@@ -437,6 +467,61 @@ async def run_agent(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+async def _publish_orchestration_event(
+    bridge: StreamBridge,
+    run_id: str,
+    *,
+    event: str,
+    name: str,
+    data: Any | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    payload = {
+        "event": event,
+        "name": name,
+        "run_id": run_id,
+        "data": data or {},
+        "metadata": {
+            "source": _ORCHESTRATION_EVENT_SOURCE,
+            **(metadata or {}),
+        },
+    }
+    await bridge.publish(run_id, "events", payload)
+
+
+async def _publish_orchestration_chunk_event(
+    bridge: StreamBridge,
+    run_id: str,
+    mode: str,
+    chunk: Any,
+) -> None:
+    if mode not in _ORCHESTRATION_EVENT_MODES:
+        return
+
+    event_name = "on_chain_stream"
+    if mode == "messages":
+        event_name = "on_chat_model_stream"
+    elif mode == "tasks":
+        event_name = "on_task_stream"
+
+    await _publish_orchestration_event(
+        bridge,
+        run_id,
+        event=event_name,
+        name=_infer_orchestration_chunk_name(mode, chunk),
+        data={"chunk": chunk},
+        metadata={"stream_mode": mode},
+    )
+
+
+def _infer_orchestration_chunk_name(mode: str, chunk: Any) -> str:
+    if isinstance(chunk, dict) and len(chunk) == 1:
+        key = next(iter(chunk.keys()))
+        if isinstance(key, str) and key:
+            return key
+    return mode
 
 
 async def _call_checkpointer_method(checkpointer: Any, async_name: str, sync_name: str, *args: Any, **kwargs: Any) -> Any:

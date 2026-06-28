@@ -106,6 +106,46 @@ async def test_run_agent_threads_explicit_app_config_into_config_only_factory():
 
 
 @pytest.mark.anyio
+async def test_run_agent_publishes_orchestration_events_when_requested():
+    run_manager = RunManager()
+    record = await run_manager.create("thread-1", assistant_id="lead_agent")
+    bridge = SimpleNamespace(
+        publish=AsyncMock(),
+        publish_end=AsyncMock(),
+        cleanup=AsyncMock(),
+    )
+    captured: dict[str, object] = {}
+
+    class DummyAgent:
+        async def astream(self, graph_input, config=None, stream_mode=None, subgraphs=False):
+            captured["stream_mode"] = stream_mode
+            yield ("updates", {"lead_agent": {"messages": []}})
+            yield ("values", {"messages": []})
+
+    def factory(*, config):
+        return DummyAgent()
+
+    await run_agent(
+        bridge,
+        run_manager,
+        record,
+        ctx=RunContext(checkpointer=None),
+        agent_factory=factory,
+        graph_input={"messages": []},
+        config={},
+        stream_modes=["values", "messages-tuple", "events"],
+    )
+
+    assert set(captured["stream_mode"]) == {"values", "messages", "updates"}
+    assert "events" not in captured["stream_mode"]
+    published_events = [call.args[2] for call in bridge.publish.await_args_list if call.args[1] == "events"]
+    event_names = [event["event"] for event in published_events]
+    assert event_names == ["on_run_start", "on_chain_stream", "on_run_end"]
+    assert published_events[1]["name"] == "lead_agent"
+    assert published_events[1]["data"] == {"chunk": {"lead_agent": {"messages": []}}}
+
+
+@pytest.mark.anyio
 async def test_run_agent_marks_llm_error_fallback_as_error_status():
     run_manager = RunManager()
     record = await run_manager.create("thread-1")

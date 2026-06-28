@@ -1128,6 +1128,7 @@ export function useThreadStream({
           },
           {
             threadId: threadId,
+            streamMode: ["values", "messages-tuple", "custom", "events"],
             streamSubgraphs: true,
             streamResumable: true,
             config: {
@@ -1232,6 +1233,7 @@ export function useThreadStream({
 
         await thread.submit(prepared.input, {
           threadId,
+          streamMode: ["values", "messages-tuple", "custom", "events"],
           checkpoint: prepared.checkpoint,
           metadata: prepared.metadata,
           streamSubgraphs: true,

@@ -604,6 +604,8 @@ The reusable harness package exposes `deerflow.extensions` for loading manifests
 
 Enabled tool descriptors are loaded into DeerFlow orchestration through `get_available_tools()`, alongside configured tools, built-ins, MCP tools, and ACP tools. Set `DEERFLOW_EXTENSION_MANIFESTS` to an OS-path-separator-delimited manifest list to override the default `registries/internal_extensions.example.json`.
 
+When clients request `streamMode: ["values", "messages-tuple", "custom", "events"]`, the gateway now emits LangChain-shaped `events` frames for run start/end and orchestration chunks, while continuing to stream state snapshots and final answers.
+
 Report helpers are available from `deerflow.artifacts` for generating HTML, CSV, and minimal PDF artifacts from Python code.
 
 ```
