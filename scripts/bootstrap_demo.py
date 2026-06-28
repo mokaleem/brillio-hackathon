@@ -142,6 +142,20 @@ def _demo_registry() -> dict:
         ],
         "extensions": [
             {
+                "kind": "agent",
+                "name": "reporting-agent",
+                "enabled": True,
+                "source": "local",
+                "description": "Generate internal reports and exports from structured business data",
+                "display_name": "Reporting Agent",
+                "category": "Reporting",
+                "metadata": {
+                    "tool_groups": ["reporting"],
+                    "skills": [],
+                    "soul": "You are an internal reporting specialist. Produce concise, auditable reports and prefer generated artifacts when the user asks for deliverables.",
+                },
+            },
+            {
                 "kind": "tool",
                 "name": "html-report",
                 "enabled": True,
@@ -166,6 +180,19 @@ def _demo_registry() -> dict:
                 "display_name": "CSV Export",
                 "category": "Reporting",
                 "metadata": {"group": "reporting"},
+            },
+            {
+                "kind": "skill",
+                "name": "market-research",
+                "enabled": False,
+                "source": "local",
+                "entrypoint": "internal_skills/market-research",
+                "description": "Research market context from approved sources",
+                "allowed_tools": ["web_search", "html_report", "csv_export"],
+                "tags": ["research"],
+                "risk_level": "medium",
+                "display_name": "Market Research",
+                "category": "Research",
             },
         ],
     }

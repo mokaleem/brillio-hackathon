@@ -304,6 +304,7 @@ def test_example_internal_extensions_manifest_loads() -> None:
 
     catalog = load_extension_catalog([manifest_path], repo_root=repo_root)
 
+    assert [extension.name for extension in catalog.enabled(kind="agent")] == ["reporting-agent"]
     assert [extension.name for extension in catalog.enabled(kind="tool")] == ["html-report", "csv-export"]
     assert catalog.enabled(kind="skill") == []
 

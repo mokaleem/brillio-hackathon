@@ -91,3 +91,63 @@ def test_load_skills_prefers_custom_over_public_with_same_name(tmp_path: Path):
 
     assert shared.category == "custom"
     assert shared.description == "Custom version"
+
+
+def test_load_skills_discovers_enabled_registry_skill(tmp_path: Path, monkeypatch):
+    registry_skill_dir = tmp_path / "internal_skills" / "market-research"
+    _write_skill(registry_skill_dir, "market-research", "Research approved markets")
+    manifest_path = tmp_path / "registry.json"
+    manifest_path.write_text(
+        """
+        {
+          "version": 1,
+          "extensions": [
+            {
+              "kind": "skill",
+              "name": "market-research",
+              "enabled": true,
+              "source": "local",
+              "entrypoint": "internal_skills/market-research"
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEER_FLOW_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
+
+    skills = get_or_new_skill_storage(skills_path=tmp_path / "skills").load_skills(enabled_only=True)
+
+    assert [skill.name for skill in skills] == ["market-research"]
+    assert skills[0].category == "public"
+    assert skills[0].skill_file == registry_skill_dir / "SKILL.md"
+
+
+def test_disabled_registry_skill_is_not_discovered(tmp_path: Path, monkeypatch):
+    registry_skill_dir = tmp_path / "internal_skills" / "market-research"
+    _write_skill(registry_skill_dir, "market-research", "Research approved markets")
+    manifest_path = tmp_path / "registry.json"
+    manifest_path.write_text(
+        """
+        {
+          "version": 1,
+          "extensions": [
+            {
+              "kind": "skill",
+              "name": "market-research",
+              "enabled": false,
+              "source": "local",
+              "entrypoint": "internal_skills/market-research"
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEER_FLOW_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
+
+    skills = get_or_new_skill_storage(skills_path=tmp_path / "skills").load_skills(enabled_only=False)
+
+    assert skills == []

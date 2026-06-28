@@ -202,6 +202,75 @@ class TestLoadAgentConfig:
 
         assert cfg.name == "legacy-agent"
 
+    def test_load_registry_agent_config_when_filesystem_agent_missing(self, tmp_path, monkeypatch):
+        manifest_path = tmp_path / "registry.json"
+        manifest_path.write_text(
+            """
+            {
+              "version": 1,
+              "extensions": [
+                {
+                  "kind": "agent",
+                  "name": "finance-agent",
+                  "enabled": true,
+                  "source": "local",
+                  "description": "Finance specialist",
+                  "metadata": {
+                    "model": "gpt-finance",
+                    "tool_groups": ["reporting"],
+                    "skills": ["market-research"],
+                    "soul": "You are precise with financial analysis."
+                  }
+                }
+              ]
+            }
+            """,
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
+
+        with patch("deerflow.config.agents_config.get_paths", return_value=_make_paths(tmp_path)):
+            from deerflow.config.agents_config import load_agent_config, load_agent_soul
+
+            cfg = load_agent_config("finance-agent")
+            soul = load_agent_soul("finance-agent")
+
+        assert cfg.name == "finance-agent"
+        assert cfg.description == "Finance specialist"
+        assert cfg.model == "gpt-finance"
+        assert cfg.tool_groups == ["reporting"]
+        assert cfg.skills == ["market-research"]
+        assert soul == "You are precise with financial analysis."
+
+    def test_filesystem_agent_shadows_registry_agent(self, tmp_path, monkeypatch):
+        _write_agent(tmp_path, "finance-agent", {"name": "finance-agent", "description": "Filesystem"})
+        manifest_path = tmp_path / "registry.json"
+        manifest_path.write_text(
+            """
+            {
+              "version": 1,
+              "extensions": [
+                {
+                  "kind": "agent",
+                  "name": "finance-agent",
+                  "enabled": true,
+                  "source": "local",
+                  "description": "Registry"
+                }
+              ]
+            }
+            """,
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
+
+        with patch("deerflow.config.agents_config.get_paths", return_value=_make_paths(tmp_path)):
+            from deerflow.config.agents_config import load_agent_config
+
+            cfg = load_agent_config("finance-agent")
+
+        assert cfg.description == "Filesystem"
+
 
 # ===========================================================================
 # 3b. resolve_agent_dir — memory-only directory fallback (#3390)
@@ -391,6 +460,41 @@ class TestListCustomAgents:
 
         names = [a.name for a in agents]
         assert names == sorted(names)
+
+    def test_includes_registry_agents(self, tmp_path, monkeypatch):
+        _write_agent(tmp_path, "local-agent", {"name": "local-agent"})
+        manifest_path = tmp_path / "registry.json"
+        manifest_path.write_text(
+            """
+            {
+              "version": 1,
+              "extensions": [
+                {
+                  "kind": "agent",
+                  "name": "registry-agent",
+                  "enabled": true,
+                  "source": "local",
+                  "description": "From registry"
+                },
+                {
+                  "kind": "agent",
+                  "name": "disabled-agent",
+                  "enabled": false,
+                  "source": "local"
+                }
+              ]
+            }
+            """,
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
+
+        with patch("deerflow.config.agents_config.get_paths", return_value=_make_paths(tmp_path)):
+            from deerflow.config.agents_config import list_custom_agents
+
+            agents = list_custom_agents()
+
+        assert [agent.name for agent in agents] == ["local-agent", "registry-agent"]
 
 
 # ===========================================================================
