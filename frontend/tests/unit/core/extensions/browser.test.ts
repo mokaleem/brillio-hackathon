@@ -2,6 +2,8 @@ import { describe, expect, test } from "@rstest/core";
 
 import {
   applyExtensionEnabledUpdate,
+  buildExtensionPrompt,
+  extensionDisplayName,
   filterExtensions,
   formatExtensionKind,
   summarizeExtensions,
@@ -95,5 +97,48 @@ describe("extension browser helpers", () => {
   test("formats MCP as an acronym", () => {
     expect(formatExtensionKind("mcp")).toBe("MCP");
     expect(formatExtensionKind("agent")).toBe("Agent");
+  });
+
+  test("uses display name as the capability label", () => {
+    expect(extensionDisplayName(extensions[0]!)).toBe("Finance Analyst");
+    expect(extensionDisplayName(extensions[1]!)).toBe("market-data-tool");
+  });
+
+  test("builds prompts from registry prompt templates", () => {
+    const extension: ExtensionDescriptor = {
+      ...extensions[1]!,
+      display_name: "Market Data",
+      metadata: {
+        prompt_template:
+          "Use {{display_name}} ({{kind}}) to inspect {{category}} for ",
+      },
+      category: "Treasury",
+    };
+
+    expect(buildExtensionPrompt(extension)).toBe(
+      "Use Market Data (Tool) to inspect Treasury for ",
+    );
+  });
+
+  test("uses first example prompt when no prompt template exists", () => {
+    const extension: ExtensionDescriptor = {
+      ...extensions[1]!,
+      metadata: {
+        example_prompts: [
+          "Pull market data for the current pipeline.",
+          "Compare market data by region.",
+        ],
+      },
+    };
+
+    expect(buildExtensionPrompt(extension)).toBe(
+      "Pull market data for the current pipeline.",
+    );
+  });
+
+  test("falls back to kind-specific prompts", () => {
+    expect(buildExtensionPrompt(extensions[0]!)).toBe("Ask Finance Analyst to ");
+    expect(buildExtensionPrompt(extensions[2]!)).toBe("/quarterly-report ");
+    expect(buildExtensionPrompt(extensions[1]!)).toBe("Use market-data-tool to ");
   });
 });

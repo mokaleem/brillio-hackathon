@@ -154,6 +154,10 @@ def _demo_registry() -> dict:
                     "tool_groups": ["reporting"],
                     "skills": [],
                     "soul": "You are an internal reporting specialist. Produce concise, auditable reports and prefer generated artifacts when the user asks for deliverables.",
+                    "prompt_template": "Ask {{display_name}} to generate a concise internal report about ",
+                    "example_prompts": [
+                        "Ask Reporting Agent to summarize quarterly delivery risks and produce an artifact.",
+                    ],
                 },
             },
             {
@@ -167,7 +171,17 @@ def _demo_registry() -> dict:
                 "risk_level": "low",
                 "display_name": "HTML Report",
                 "category": "Reporting",
-                "metadata": {"group": "reporting"},
+                "metadata": {
+                    "group": "reporting",
+                    "prompt_template": "Use {{display_name}} to create an HTML report titled ",
+                    "example_prompts": [
+                        "Use HTML Report to create an HTML report titled Hackathon Readiness with sections for architecture, registry loading, and demo flow.",
+                    ],
+                    "input_schema": {
+                        "title": "string",
+                        "sections_json": "JSON array of objects with title and body",
+                    },
+                },
             },
             {
                 "kind": "tool",
@@ -180,7 +194,16 @@ def _demo_registry() -> dict:
                 "risk_level": "low",
                 "display_name": "CSV Export",
                 "category": "Reporting",
-                "metadata": {"group": "reporting"},
+                "metadata": {
+                    "group": "reporting",
+                    "prompt_template": "Use {{display_name}} to export CSV rows for ",
+                    "example_prompts": [
+                        "Use CSV Export to create a CSV with rows for activation, retention, and revenue risk.",
+                    ],
+                    "input_schema": {
+                        "rows_json": "JSON array of row objects",
+                    },
+                },
             },
             {
                 "kind": "tool",
@@ -193,7 +216,17 @@ def _demo_registry() -> dict:
                 "risk_level": "low",
                 "display_name": "PDF Report",
                 "category": "Reporting",
-                "metadata": {"group": "reporting"},
+                "metadata": {
+                    "group": "reporting",
+                    "prompt_template": "Use {{display_name}} to create a PDF report titled ",
+                    "example_prompts": [
+                        "Use PDF Report to create a PDF report titled Executive Demo Summary with three concise sections.",
+                    ],
+                    "input_schema": {
+                        "title": "string",
+                        "sections_json": "JSON array of objects with title and body",
+                    },
+                },
             },
             {
                 "kind": "tool",
@@ -206,7 +239,18 @@ def _demo_registry() -> dict:
                 "risk_level": "medium",
                 "display_name": "Python Function",
                 "category": "Automation",
-                "metadata": {"group": "python"},
+                "metadata": {
+                    "group": "python",
+                    "prompt_template": "Use {{display_name}} to run the allowlisted function ",
+                    "example_prompts": [
+                        'Use Python Function to run internal_tools.python_examples:summarize_metrics for [{"value": 10}, {"value": 20}].',
+                    ],
+                    "input_schema": {
+                        "entrypoint": "module:function allowlisted in DEERFLOW_PYTHON_FUNCTION_ALLOWLIST",
+                        "args_json": "JSON array",
+                        "kwargs_json": "JSON object",
+                    },
+                },
             },
             {
                 "kind": "mcp",
@@ -221,6 +265,10 @@ def _demo_registry() -> dict:
                     "command": "python",
                     "args": ["-m", "internal_mcps.local_docs"],
                     "env": {"DOCS_ROOT": "$DOCS_ROOT"},
+                    "prompt_template": "Use the {{display_name}} MCP to search internal docs for ",
+                    "example_prompts": [
+                        "Use the Local Docs MCP to search internal docs for the onboarding policy.",
+                    ],
                 },
             },
             {

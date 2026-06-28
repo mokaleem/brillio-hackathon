@@ -23,7 +23,11 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { loadExtensions } from "@/core/extensions/api";
-import { formatExtensionKind } from "@/core/extensions/browser";
+import {
+  buildExtensionPrompt,
+  extensionDisplayName,
+  formatExtensionKind,
+} from "@/core/extensions/browser";
 import type {
   ExtensionDescriptor,
   ExtensionKind,
@@ -68,7 +72,7 @@ export function CapabilityMenu({
 
     for (const kind of KIND_ORDER) {
       groups[kind].sort((a, b) =>
-        capabilityLabel(a).localeCompare(capabilityLabel(b)),
+        extensionDisplayName(a).localeCompare(extensionDisplayName(b)),
       );
     }
 
@@ -133,7 +137,7 @@ export function CapabilityMenu({
                       key={`${extension.kind}:${extension.name}`}
                       extension={extension}
                       onSelect={() =>
-                        onInsertPrompt(buildCapabilityPrompt(extension))
+                        onInsertPrompt(buildExtensionPrompt(extension))
                       }
                     />
                   ))}
@@ -164,7 +168,7 @@ function CapabilityItem({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
             <span className="truncate text-sm font-medium">
-              {capabilityLabel(extension)}
+              {extensionDisplayName(extension)}
             </span>
             {extension.risk_level && (
               <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
@@ -196,22 +200,4 @@ function CapabilityStatus({
       <span className="truncate">{label}</span>
     </div>
   );
-}
-
-function capabilityLabel(extension: ExtensionDescriptor) {
-  return extension.display_name ?? extension.name;
-}
-
-function buildCapabilityPrompt(extension: ExtensionDescriptor) {
-  const label = capabilityLabel(extension);
-  if (extension.kind === "skill") {
-    return `/${extension.name} `;
-  }
-  if (extension.kind === "agent") {
-    return `Ask ${label} to `;
-  }
-  if (extension.kind === "mcp") {
-    return `Use the ${label} MCP to `;
-  }
-  return `Use ${label} to `;
 }

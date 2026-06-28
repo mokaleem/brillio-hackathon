@@ -99,3 +99,73 @@ export function formatExtensionKind(kind: ExtensionKind): string {
   }
   return kind.charAt(0).toUpperCase() + kind.slice(1);
 }
+
+export function extensionDisplayName(extension: ExtensionDescriptor): string {
+  return extension.display_name ?? extension.name;
+}
+
+export function buildExtensionPrompt(extension: ExtensionDescriptor): string {
+  const promptTemplate = metadataString(extension.metadata, "prompt_template");
+  if (promptTemplate) {
+    return renderExtensionPromptTemplate(promptTemplate, extension);
+  }
+
+  const examplePrompt = metadataStringList(
+    extension.metadata,
+    "example_prompts",
+  )[0];
+  if (examplePrompt) {
+    return examplePrompt;
+  }
+
+  const label = extensionDisplayName(extension);
+  if (extension.kind === "skill") {
+    return `/${extension.name} `;
+  }
+  if (extension.kind === "agent") {
+    return `Ask ${label} to `;
+  }
+  if (extension.kind === "mcp") {
+    return `Use the ${label} MCP to `;
+  }
+  return `Use ${label} to `;
+}
+
+function renderExtensionPromptTemplate(
+  template: string,
+  extension: ExtensionDescriptor,
+): string {
+  const values: Record<string, string> = {
+    category: extension.category ?? "",
+    description: extension.description,
+    display_name: extensionDisplayName(extension),
+    entrypoint: extension.entrypoint ?? "",
+    kind: formatExtensionKind(extension.kind),
+    name: extension.name,
+  };
+
+  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, key) =>
+    key in values ? values[key]! : match,
+  );
+}
+
+function metadataString(
+  metadata: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function metadataStringList(
+  metadata: Record<string, unknown>,
+  key: string,
+): string[] {
+  const value = metadata[key];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(
+    (item): item is string => typeof item === "string" && item.trim().length > 0,
+  );
+}
