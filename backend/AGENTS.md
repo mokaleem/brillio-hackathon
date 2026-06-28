@@ -187,6 +187,7 @@ The hackathon extension layer lives in the harness package under `packages/harne
 - `ExtensionManifest` / `ExtensionDescriptor` models for `agent`, `mcp`, `tool`, and `skill` descriptors.
 - `load_extension_manifest()` and `load_extension_catalog()` for side-effect-free manifest loading and duplicate detection.
 - `resolve_python_entrypoint()` / `execute_python_entrypoint()` for explicit `module:function` execution.
+- Materializers that convert descriptors into native runtime shapes: `BaseTool`, `ToolConfig`, `McpServerConfig`, skill paths, and agent factory callables.
 
 Company-owned extension implementations live outside the harness in `internal_agents/`, `internal_mcps/`, `internal_tools/`, and `internal_skills/`. Example manifests live under `registries/`, with `registries/internal_extensions.example.json` used by default.
 

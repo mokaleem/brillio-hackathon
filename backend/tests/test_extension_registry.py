@@ -3,7 +3,21 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from deerflow.extensions import ExtensionKind, ExtensionManifest, ExtensionSource, execute_python_entrypoint, load_extension_catalog, load_extension_manifest
+from deerflow.config.extensions_config import McpServerConfig
+from deerflow.config.tool_config import ToolConfig
+from deerflow.extensions import (
+    ExtensionKind,
+    ExtensionManifest,
+    ExtensionSource,
+    execute_python_entrypoint,
+    load_extension_catalog,
+    load_extension_manifest,
+    materialize_agent_factory,
+    materialize_mcp_server_config,
+    materialize_skill_path,
+    materialize_tool,
+    materialize_tool_config,
+)
 
 
 def test_manifest_parses_minimal_tool_descriptor() -> None:
@@ -199,3 +213,123 @@ def test_execute_python_entrypoint_calls_importable_function() -> None:
 def test_execute_python_entrypoint_rejects_malformed_entrypoint() -> None:
     with pytest.raises(ValueError, match="module:function"):
         execute_python_entrypoint("math.sqrt")
+
+
+def test_materialize_tool_returns_base_tool() -> None:
+    extension = ExtensionManifest.model_validate(
+        {
+            "version": 1,
+            "extensions": [
+                {
+                    "kind": "tool",
+                    "name": "ask-clarification",
+                    "enabled": True,
+                    "source": "local",
+                    "entrypoint": "deerflow.tools.builtins.clarification_tool:ask_clarification_tool",
+                    "description": "Double a value",
+                }
+            ],
+        }
+    ).extensions[0]
+
+    tool = materialize_tool(extension)
+
+    assert tool.name == "ask_clarification"
+
+
+def test_materialize_tool_config_uses_descriptor_metadata_group() -> None:
+    extension = ExtensionManifest.model_validate(
+        {
+            "version": 1,
+            "extensions": [
+                {
+                    "kind": "tool",
+                    "name": "demo-registry-tool",
+                    "enabled": True,
+                    "source": "local",
+                    "entrypoint": "deerflow.tools.builtins.clarification_tool:ask_clarification_tool",
+                    "metadata": {"group": "reporting"},
+                }
+            ],
+        }
+    ).extensions[0]
+
+    config = materialize_tool_config(extension)
+
+    assert isinstance(config, ToolConfig)
+    assert config.name == "demo-registry-tool"
+    assert config.group == "reporting"
+    assert config.use == "deerflow.tools.builtins.clarification_tool:ask_clarification_tool"
+
+
+def test_materialize_mcp_server_config_from_metadata() -> None:
+    extension = ExtensionManifest.model_validate(
+        {
+            "version": 1,
+            "extensions": [
+                {
+                    "kind": "mcp",
+                    "name": "local-docs",
+                    "enabled": True,
+                    "source": "local",
+                    "description": "Local docs MCP",
+                    "metadata": {
+                        "type": "stdio",
+                        "command": "python",
+                        "args": ["-m", "internal_mcps.docs"],
+                        "env": {"DOCS_ROOT": "$DOCS_ROOT"},
+                    },
+                }
+            ],
+        }
+    ).extensions[0]
+
+    config = materialize_mcp_server_config(extension)
+
+    assert isinstance(config, McpServerConfig)
+    assert config.enabled is True
+    assert config.command == "python"
+    assert config.args == ["-m", "internal_mcps.docs"]
+    assert config.description == "Local docs MCP"
+
+
+def test_materialize_skill_path_stays_inside_repo(tmp_path: Path) -> None:
+    skill_dir = tmp_path / "internal_skills" / "market-research"
+    skill_dir.mkdir(parents=True)
+    extension = ExtensionManifest.model_validate(
+        {
+            "version": 1,
+            "extensions": [
+                {
+                    "kind": "skill",
+                    "name": "market-research",
+                    "enabled": True,
+                    "source": "local",
+                    "entrypoint": "internal_skills/market-research",
+                }
+            ],
+        }
+    ).extensions[0]
+
+    assert materialize_skill_path(extension, repo_root=tmp_path) == skill_dir
+
+
+def test_materialize_agent_factory_returns_callable() -> None:
+    extension = ExtensionManifest.model_validate(
+        {
+            "version": 1,
+            "extensions": [
+                {
+                    "kind": "agent",
+                    "name": "demo-agent",
+                    "enabled": True,
+                    "source": "local",
+                    "entrypoint": "math:sqrt",
+                }
+            ],
+        }
+    ).extensions[0]
+
+    factory = materialize_agent_factory(extension)
+
+    assert factory(81) == 9
