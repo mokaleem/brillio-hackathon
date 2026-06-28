@@ -193,6 +193,8 @@ Company-owned extension implementations live outside the harness in `internal_ag
 
 The Gateway exposes the catalog at `GET /api/extensions` and supports `?kind=agent|mcp|tool|skill`. Admin-only endpoints validate (`POST /api/extensions/validate`), reload/list (`POST /api/extensions/reload`), and toggle (`PUT /api/extensions/{kind}/{name}`) manifest entries. Override the manifest list with `DEERFLOW_EXTENSION_MANIFESTS` using the OS path separator.
 
+Enabled `tool` descriptors are materialized and appended by `deerflow.tools.tools.get_available_tools()`, after configured tools and before built-ins, MCP tools, and ACP tools. This keeps registry tools available to orchestration while preserving existing duplicate-name precedence.
+
 Report artifact helpers live under `packages/harness/deerflow/artifacts/` and currently provide `generate_html_report`, `generate_csv_file`, and `generate_pdf_report`.
 
 ### Agent System

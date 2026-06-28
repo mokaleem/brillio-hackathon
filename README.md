@@ -602,6 +602,8 @@ This fork adds a manifest-driven internal extension layer for company deployment
 
 The reusable harness package exposes `deerflow.extensions` for loading manifests, resolving importable Python entrypoints, and querying enabled extensions. The Gateway exposes the same catalog over `GET /api/extensions`, with optional `?kind=agent|mcp|tool|skill` filtering, so the web UI or a separate UI codebase can discover available capabilities without importing backend code. Admin endpoints can validate, reload, and enable or disable manifest entries.
 
+Enabled tool descriptors are loaded into DeerFlow orchestration through `get_available_tools()`, alongside configured tools, built-ins, MCP tools, and ACP tools. Set `DEERFLOW_EXTENSION_MANIFESTS` to an OS-path-separator-delimited manifest list to override the default `registries/internal_extensions.example.json`.
+
 Report helpers are available from `deerflow.artifacts` for generating HTML, CSV, and minimal PDF artifacts from Python code.
 
 ```

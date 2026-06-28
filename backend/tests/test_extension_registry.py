@@ -10,8 +10,10 @@ from deerflow.extensions import (
     ExtensionManifest,
     ExtensionSource,
     execute_python_entrypoint,
+    get_runtime_extension_manifest_paths,
     load_extension_catalog,
     load_extension_manifest,
+    load_runtime_extension_catalog,
     materialize_agent_factory,
     materialize_mcp_server_config,
     materialize_skill_path,
@@ -194,6 +196,43 @@ def test_catalog_rejects_duplicate_kind_and_name(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Duplicate extension"):
         load_extension_catalog([first, second], repo_root=tmp_path)
+
+
+def test_runtime_catalog_uses_env_manifest(monkeypatch, tmp_path: Path) -> None:
+    manifest_path = tmp_path / "extensions.json"
+    manifest_path.write_text(
+        """
+        {
+          "version": 1,
+          "extensions": [
+            {
+              "kind": "tool",
+              "name": "company-metric-tool",
+              "enabled": true,
+              "source": "local",
+              "entrypoint": "tests.support.registry_tools:company_metric_tool"
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
+
+    paths = get_runtime_extension_manifest_paths(repo_root=tmp_path)
+    catalog = load_runtime_extension_catalog(repo_root=tmp_path)
+
+    assert paths == [manifest_path]
+    assert [extension.name for extension in catalog.enabled(kind="tool")] == ["company-metric-tool"]
+
+
+def test_runtime_catalog_is_empty_without_default_manifest(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("DEERFLOW_EXTENSION_MANIFESTS", raising=False)
+
+    catalog = load_runtime_extension_catalog(repo_root=tmp_path)
+
+    assert catalog.extensions == ()
+    assert catalog.repo_root == tmp_path.resolve()
 
 
 def test_example_internal_extensions_manifest_loads() -> None:

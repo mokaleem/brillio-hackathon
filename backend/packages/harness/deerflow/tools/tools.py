@@ -4,6 +4,7 @@ from langchain.tools import BaseTool
 
 from deerflow.config import get_app_config
 from deerflow.config.app_config import AppConfig
+from deerflow.extensions import ExtensionDescriptor, ExtensionKind, load_runtime_extension_catalog, materialize_tool
 from deerflow.reflection import resolve_variable
 from deerflow.sandbox.security import is_host_bash_allowed
 from deerflow.tools.builtins import ask_clarification_tool, present_file_tool, task_tool, view_image_tool
@@ -39,6 +40,15 @@ def _ensure_sync_invocable_tool(tool: BaseTool) -> BaseTool:
     if getattr(tool, "func", None) is None and getattr(tool, "coroutine", None) is not None:
         tool.func = make_sync_tool_wrapper(tool.coroutine, tool.name)
     return tool
+
+
+def _extension_tool_group(extension: ExtensionDescriptor) -> str:
+    group = extension.metadata.get("group") or extension.category or "registry"
+    return str(group)
+
+
+def _extension_tool_in_groups(extension: ExtensionDescriptor, groups: list[str] | None) -> bool:
+    return groups is None or _extension_tool_group(extension) in groups
 
 
 def get_available_tools(
@@ -86,6 +96,29 @@ def get_available_tools(
             )
 
     loaded_tools = [_ensure_sync_invocable_tool(t) for _, t in loaded_tools_raw]
+
+    registry_tools: list[BaseTool] = []
+    try:
+        catalog = load_runtime_extension_catalog()
+        registry_tool_extensions = [
+            extension
+            for extension in catalog.enabled(kind=ExtensionKind.TOOL)
+            if _extension_tool_in_groups(extension, groups)
+        ]
+        for extension in registry_tool_extensions:
+            tool = _ensure_sync_invocable_tool(materialize_tool(extension))
+            if extension.name != tool.name:
+                logger.warning(
+                    "Registry tool name mismatch: descriptor name %r does not match tool .name %r (entrypoint: %s). The tool's own .name will be used for binding.",
+                    extension.name,
+                    tool.name,
+                    extension.entrypoint,
+                )
+            registry_tools.append(tool)
+        if registry_tools:
+            logger.info("Including %d registry tool(s)", len(registry_tools))
+    except Exception as e:
+        logger.error("Failed to load registry tools: %s", e)
 
     # Conditionally add tools based on config
     builtin_tools = BUILTIN_TOOLS.copy()
@@ -156,12 +189,19 @@ def get_available_tools(
     except Exception as e:
         logger.warning(f"Failed to load ACP tool: {e}")
 
-    logger.info(f"Total tools loaded: {len(loaded_tools)}, built-in tools: {len(builtin_tools)}, MCP tools: {len(mcp_tools)}, ACP tools: {len(acp_tools)}")
+    logger.info(
+        "Total tools loaded: %d config, %d registry, %d built-in, %d MCP, %d ACP",
+        len(loaded_tools),
+        len(registry_tools),
+        len(builtin_tools),
+        len(mcp_tools),
+        len(acp_tools),
+    )
 
     # Deduplicate by tool name — config-loaded tools take priority, followed by
     # built-ins, MCP tools, and ACP tools.  Duplicate names cause the LLM to
     # receive ambiguous or concatenated function schemas (issue #1803).
-    all_tools = [_ensure_sync_invocable_tool(t) for t in loaded_tools + builtin_tools + mcp_tools + acp_tools]
+    all_tools = [_ensure_sync_invocable_tool(t) for t in loaded_tools + registry_tools + builtin_tools + mcp_tools + acp_tools]
     seen_names: set[str] = set()
     unique_tools: list[BaseTool] = []
     for t in all_tools:

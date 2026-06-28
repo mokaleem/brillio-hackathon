@@ -9,6 +9,7 @@ from deerflow.extensions.materialize import (
     materialize_tool,
     materialize_tool_config,
 )
+from deerflow.extensions.runtime import get_runtime_extension_manifest_paths, load_runtime_extension_catalog
 
 __all__ = [
     "ExtensionCatalog",
@@ -20,6 +21,8 @@ __all__ = [
     "execute_python_entrypoint",
     "load_extension_catalog",
     "load_extension_manifest",
+    "get_runtime_extension_manifest_paths",
+    "load_runtime_extension_catalog",
     "materialize_agent_factory",
     "materialize_mcp_server_config",
     "materialize_skill_path",

@@ -8,12 +8,17 @@ priority, and logs a warning for every skipped duplicate.
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from langchain_core.tools import BaseTool, StructuredTool, tool
 from pydantic import BaseModel, Field
 
 from deerflow.tools.tools import get_available_tools
+
+TESTS_DIR = Path(__file__).parent
+REGISTRY_METRIC_TOOL_ENTRYPOINT = "support.registry_tools:company_metric_tool"
+REGISTRY_EXPORT_TOOL_ENTRYPOINT = "support.registry_tools:company_export_tool"
 
 # ---------------------------------------------------------------------------
 # Fixture tools
@@ -63,6 +68,19 @@ def _make_minimal_config(tools):
     return config
 
 
+def _write_registry_manifest(path, extensions: list[dict]) -> None:
+    import json
+
+    path.write_text(
+        json.dumps({"version": 1, "extensions": extensions}, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _make_registry_support_importable(monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(TESTS_DIR))
+
+
 @patch("deerflow.tools.tools.get_app_config")
 @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
 def test_config_loaded_async_only_tool_gets_sync_wrapper(mock_bash, mock_cfg):
@@ -93,6 +111,77 @@ def test_config_loaded_async_only_tool_gets_sync_wrapper(mock_bash, mock_cfg):
     assert async_tool in result
     assert async_tool.func is not None
     assert async_tool.invoke({"x": 42}) == "result: 42"
+
+
+@patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+def test_registry_tools_are_loaded_from_enabled_manifest(mock_bash, monkeypatch, tmp_path):
+    """Enabled tool descriptors from the runtime registry join orchestration tools."""
+    _make_registry_support_importable(monkeypatch)
+    manifest_path = tmp_path / "extensions.json"
+    _write_registry_manifest(
+        manifest_path,
+        [
+            {
+                "kind": "tool",
+                "name": "company-metric-tool",
+                "enabled": True,
+                "source": "local",
+                "entrypoint": REGISTRY_METRIC_TOOL_ENTRYPOINT,
+                "metadata": {"group": "analytics"},
+            },
+            {
+                "kind": "tool",
+                "name": "company-export-tool",
+                "enabled": False,
+                "source": "local",
+                "entrypoint": REGISTRY_EXPORT_TOOL_ENTRYPOINT,
+            },
+        ],
+    )
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
+
+    with patch("deerflow.tools.tools.BUILTIN_TOOLS", []):
+        result = get_available_tools(include_mcp=False, app_config=_make_minimal_config([]))
+
+    names = [tool.name for tool in result]
+    assert "company_metric_tool" in names
+    assert "company_export_tool" not in names
+    metric_tool = next(tool for tool in result if tool.name == "company_metric_tool")
+    assert metric_tool.invoke({"metric": "pipeline"}) == "metric:pipeline"
+
+
+@patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+def test_registry_tools_respect_group_filters(mock_bash, monkeypatch, tmp_path):
+    """Registry tool metadata group participates in existing tool group filtering."""
+    _make_registry_support_importable(monkeypatch)
+    manifest_path = tmp_path / "extensions.json"
+    _write_registry_manifest(
+        manifest_path,
+        [
+            {
+                "kind": "tool",
+                "name": "company-metric-tool",
+                "enabled": True,
+                "source": "local",
+                "entrypoint": REGISTRY_METRIC_TOOL_ENTRYPOINT,
+                "metadata": {"group": "analytics"},
+            },
+            {
+                "kind": "tool",
+                "name": "company-export-tool",
+                "enabled": True,
+                "source": "local",
+                "entrypoint": REGISTRY_EXPORT_TOOL_ENTRYPOINT,
+                "metadata": {"group": "exports"},
+            },
+        ],
+    )
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
+
+    with patch("deerflow.tools.tools.BUILTIN_TOOLS", []):
+        result = get_available_tools(groups=["exports"], include_mcp=False, app_config=_make_minimal_config([]))
+
+    assert [tool.name for tool in result] == ["company_export_tool"]
 
 
 @patch("deerflow.tools.tools.get_app_config")
