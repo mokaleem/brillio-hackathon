@@ -115,7 +115,7 @@ def _build_env_file() -> str:
 # OPENAI_API_KEY=sk-your-key
 
 # Keep local extension packages and registries rooted at this checkout.
-DEER_FLOW_EXTENSION_MANIFESTS=registries/demo_extensions.json
+DEERFLOW_EXTENSION_MANIFESTS=registries/demo_extensions.json
 DEER_FLOW_EXTENSIONS_CONFIG_PATH=extensions_config.json
 
 # Optional direct Gateway wiring. Defaults match make dev.
@@ -147,6 +147,7 @@ def _demo_registry() -> dict:
                 "name": "reporting-agent",
                 "enabled": True,
                 "source": "local",
+                "entrypoint": "internal_agents.reporting:create_agent",
                 "description": "Generate internal reports and exports from structured business data",
                 "display_name": "Reporting Agent",
                 "category": "Reporting",

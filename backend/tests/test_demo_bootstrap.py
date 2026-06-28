@@ -64,3 +64,13 @@ def test_bootstrap_demo_config_is_loadable_without_api_keys(tmp_path: Path, monk
     assert config.models[0].name == "demo-gpt-4o-mini"
     assert config.sandbox.use == "deerflow.sandbox.local:LocalSandboxProvider"
     assert config.database.backend == "sqlite"
+
+
+def test_bootstrap_demo_uses_runtime_extension_manifest_env(tmp_path: Path) -> None:
+    (tmp_path / "frontend").mkdir()
+    bootstrap_demo.bootstrap_demo(tmp_path)
+
+    env_file = (tmp_path / ".env").read_text(encoding="utf-8")
+
+    assert "DEERFLOW_EXTENSION_MANIFESTS=registries/demo_extensions.json" in env_file
+    assert "DEER_FLOW_EXTENSION_MANIFESTS" not in env_file
