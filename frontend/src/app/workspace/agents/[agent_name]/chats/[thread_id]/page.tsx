@@ -17,6 +17,7 @@ import {
   MESSAGE_LIST_DEFAULT_PADDING_BOTTOM,
 } from "@/components/workspace/messages";
 import { ThreadContext } from "@/components/workspace/messages/context";
+import { RunTimelineTrigger } from "@/components/workspace/run-timeline-trigger";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { TokenUsageIndicator } from "@/components/workspace/token-usage-indicator";
@@ -79,6 +80,7 @@ export default function AgentChatPage() {
     isHistoryLoading,
     hasMoreHistory,
     loadMoreHistory,
+    timelineEvents,
   } = useThreadStream({
     threadId: isNewThread ? undefined : threadId,
     displayThreadId: threadId,
@@ -213,6 +215,10 @@ export default function AgentChatPage() {
                 }
               />
               <ExportTrigger threadId={threadId} />
+              <RunTimelineTrigger
+                events={timelineEvents}
+                isStreaming={thread.isLoading}
+              />
               <ArtifactTrigger />
             </div>
           </header>
