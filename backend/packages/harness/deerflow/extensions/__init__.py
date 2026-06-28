@@ -10,6 +10,7 @@ from deerflow.extensions.materialize import (
     materialize_tool_config,
 )
 from deerflow.extensions.runtime import get_runtime_extension_manifest_paths, load_runtime_extension_catalog
+from deerflow.extensions.validation import ExtensionRegistryHealth, validate_extension_registry
 
 __all__ = [
     "ExtensionCatalog",
@@ -17,6 +18,7 @@ __all__ = [
     "ExtensionKind",
     "ExtensionManifest",
     "ExtensionSource",
+    "ExtensionRegistryHealth",
     "RegistryImport",
     "execute_python_entrypoint",
     "load_extension_catalog",
@@ -29,4 +31,5 @@ __all__ = [
     "materialize_tool",
     "materialize_tool_config",
     "resolve_python_entrypoint",
+    "validate_extension_registry",
 ]

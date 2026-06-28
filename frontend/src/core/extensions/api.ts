@@ -3,6 +3,7 @@ import { getBackendBaseURL } from "@/core/config";
 
 import type {
   ExtensionKind,
+  ExtensionHealthResponse,
   ExtensionUpdateResponse,
   ExtensionValidateResponse,
   ExtensionsResponse,
@@ -34,6 +35,20 @@ export async function validateExtensions(): Promise<ExtensionValidateResponse> {
     valid: data.valid ?? false,
     count: data.count ?? 0,
     errors: data.errors ?? [],
+    warnings: data.warnings ?? [],
+  };
+}
+
+export async function loadExtensionHealth(): Promise<ExtensionHealthResponse> {
+  const response = await fetch(`${getBackendBaseURL()}/api/extensions/health`);
+  await assertOk(response, "Failed to load extension health");
+  const data = (await response.json()) as Partial<ExtensionHealthResponse>;
+  return {
+    valid: data.valid ?? false,
+    count: data.count ?? 0,
+    manifests: data.manifests ?? [],
+    errors: data.errors ?? [],
+    warnings: data.warnings ?? [],
   };
 }
 

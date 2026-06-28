@@ -29,8 +29,13 @@ def test_extensions_router_lists_default_manifest() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert [extension["name"] for extension in payload["extensions"] if extension["kind"] == "tool"] == ["html-report", "csv-export"]
-    assert payload["count"] == 3
+    assert [extension["name"] for extension in payload["extensions"] if extension["kind"] == "tool"] == [
+        "html-report",
+        "csv-export",
+        "pdf-report",
+        "python-function",
+    ]
+    assert payload["count"] == 7
 
 
 def test_extensions_router_filters_by_kind() -> None:
@@ -71,6 +76,36 @@ def test_extensions_router_uses_env_manifest(monkeypatch, tmp_path: Path) -> Non
     assert response.json()["extensions"][0]["name"] == "finance-agent"
 
 
+def test_extensions_router_resolves_relative_env_manifest(monkeypatch, tmp_path: Path) -> None:
+    manifest_path = tmp_path / "registries" / "extensions.json"
+    manifest_path.parent.mkdir()
+    manifest_path.write_text(
+        """
+        {
+          "version": 1,
+          "extensions": [
+            {
+              "kind": "agent",
+              "name": "finance-agent",
+              "enabled": true,
+              "source": "local",
+              "entrypoint": "internal_agents.finance:create_agent"
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", "registries/extensions.json")
+
+    with TestClient(_make_app()) as client:
+        response = client.get("/api/extensions")
+
+    assert response.status_code == 200
+    assert response.json()["extensions"][0]["name"] == "finance-agent"
+
+
 def test_extensions_validate_reports_descriptor_errors(monkeypatch, tmp_path: Path) -> None:
     manifest_path = tmp_path / "bad.json"
     manifest_path.write_text(
@@ -99,6 +134,49 @@ def test_extensions_validate_reports_descriptor_errors(monkeypatch, tmp_path: Pa
     assert payload["valid"] is False
     assert payload["count"] == 0
     assert "hyphen-case" in payload["errors"][0]
+
+
+def test_extensions_health_reports_import_and_mcp_errors(monkeypatch, tmp_path: Path) -> None:
+    manifest_path = tmp_path / "extensions.json"
+    manifest_path.write_text(
+        """
+        {
+          "version": 1,
+          "imports": [
+            {
+              "name": "missing-tools",
+              "kind": "tool",
+              "type": "directory",
+              "path": "missing_tools"
+            }
+          ],
+          "extensions": [
+            {
+              "kind": "mcp",
+              "name": "bad-mcp",
+              "enabled": true,
+              "source": "local",
+              "metadata": {
+                "type": "stdio"
+              }
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
+
+    with TestClient(_make_admin_app()) as client:
+        response = client.get("/api/extensions/health")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["valid"] is False
+    assert payload["count"] == 1
+    assert str(manifest_path) in payload["manifests"]
+    assert any("missing-tools" in error and "does not exist" in error for error in payload["errors"])
+    assert any("bad-mcp" in error and "metadata.command" in error for error in payload["errors"])
 
 
 def test_extensions_reload_returns_active_catalog(monkeypatch, tmp_path: Path) -> None:

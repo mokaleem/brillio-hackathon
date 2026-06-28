@@ -27,6 +27,15 @@ export interface ExtensionValidateResponse {
   valid: boolean;
   count: number;
   errors: string[];
+  warnings: string[];
+}
+
+export interface ExtensionHealthResponse {
+  valid: boolean;
+  count: number;
+  manifests: string[];
+  errors: string[];
+  warnings: string[];
 }
 
 export interface ExtensionUpdateResponse {

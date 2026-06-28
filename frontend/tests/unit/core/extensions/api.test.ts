@@ -10,6 +10,7 @@ rs.mock("@/core/config", () => ({
 
 import { fetch as fetcher } from "@/core/api/fetcher";
 import {
+  loadExtensionHealth,
   loadExtensions,
   reloadExtensions,
   updateExtensionEnabled,
@@ -88,10 +89,32 @@ describe("extension management api", () => {
       valid: true,
       count: 2,
       errors: [],
+      warnings: [],
     });
     expect(mockedFetch).toHaveBeenCalledWith("/api/extensions/validate", {
       method: "POST",
     });
+  });
+
+  test("loadExtensionHealth reads registry health", async () => {
+    mockedFetch.mockResolvedValueOnce(
+      jsonResponse(200, {
+        valid: false,
+        count: 1,
+        manifests: ["/repo/registry.json"],
+        errors: ["bad MCP"],
+        warnings: ["missing prompt template"],
+      }),
+    );
+
+    await expect(loadExtensionHealth()).resolves.toEqual({
+      valid: false,
+      count: 1,
+      manifests: ["/repo/registry.json"],
+      errors: ["bad MCP"],
+      warnings: ["missing prompt template"],
+    });
+    expect(mockedFetch).toHaveBeenCalledWith("/api/extensions/health");
   });
 
   test("reloadExtensions posts to the reload endpoint", async () => {

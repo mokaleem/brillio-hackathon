@@ -20,6 +20,7 @@ from deerflow.extensions import (
     materialize_skill_path,
     materialize_tool,
     materialize_tool_config,
+    validate_extension_registry,
 )
 
 
@@ -452,3 +453,41 @@ def test_materialize_agent_factory_returns_callable() -> None:
     factory = materialize_agent_factory(extension)
 
     assert factory(81) == 9
+
+
+def test_validate_extension_registry_reports_missing_import_and_bad_mcp(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "extensions.json"
+    manifest_path.write_text(
+        """
+        {
+          "version": 1,
+          "imports": [
+            {
+              "name": "missing-mcps",
+              "kind": "mcp",
+              "type": "directory",
+              "path": "internal_mcps"
+            }
+          ],
+          "extensions": [
+            {
+              "kind": "mcp",
+              "name": "remote-docs",
+              "enabled": true,
+              "source": "local",
+              "metadata": {
+                "type": "http"
+              }
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    health = validate_extension_registry([manifest_path], repo_root=tmp_path)
+
+    assert health.valid is False
+    assert health.count == 1
+    assert any("missing-mcps" in error for error in health.errors)
+    assert any("metadata.url" in error for error in health.errors)
