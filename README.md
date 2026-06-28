@@ -600,7 +600,7 @@ Gateway-generated follow-up suggestions now normalize both plain-string model ou
 
 This fork adds a manifest-driven internal extension layer for company deployments. Agents, MCP servers, tools, and skills can be declared in JSON manifests under `registries/` while their implementations live outside the harness in `internal_agents/`, `internal_mcps/`, `internal_tools/`, and `internal_skills/`.
 
-The reusable harness package exposes `deerflow.extensions` for loading manifests, resolving importable Python entrypoints, and querying enabled extensions. The Gateway exposes the same catalog over `GET /api/extensions`, with optional `?kind=agent|mcp|tool|skill` filtering, so the web UI or a separate UI codebase can discover available capabilities without importing backend code.
+The reusable harness package exposes `deerflow.extensions` for loading manifests, resolving importable Python entrypoints, and querying enabled extensions. The Gateway exposes the same catalog over `GET /api/extensions`, with optional `?kind=agent|mcp|tool|skill` filtering, so the web UI or a separate UI codebase can discover available capabilities without importing backend code. Admin endpoints can validate, reload, and enable or disable manifest entries.
 
 Report helpers are available from `deerflow.artifacts` for generating HTML, CSV, and minimal PDF artifacts from Python code.
 

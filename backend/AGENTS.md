@@ -191,7 +191,7 @@ The hackathon extension layer lives in the harness package under `packages/harne
 
 Company-owned extension implementations live outside the harness in `internal_agents/`, `internal_mcps/`, `internal_tools/`, and `internal_skills/`. Example manifests live under `registries/`, with `registries/internal_extensions.example.json` used by default.
 
-The Gateway exposes the catalog at `GET /api/extensions` and supports `?kind=agent|mcp|tool|skill`. Override the manifest list with `DEERFLOW_EXTENSION_MANIFESTS` using the OS path separator.
+The Gateway exposes the catalog at `GET /api/extensions` and supports `?kind=agent|mcp|tool|skill`. Admin-only endpoints validate (`POST /api/extensions/validate`), reload/list (`POST /api/extensions/reload`), and toggle (`PUT /api/extensions/{kind}/{name}`) manifest entries. Override the manifest list with `DEERFLOW_EXTENSION_MANIFESTS` using the OS path separator.
 
 Report artifact helpers live under `packages/harness/deerflow/artifacts/` and currently provide `generate_html_report`, `generate_csv_file`, and `generate_pdf_report`.
 

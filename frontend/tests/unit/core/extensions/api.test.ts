@@ -9,7 +9,12 @@ rs.mock("@/core/config", () => ({
 }));
 
 import { fetch as fetcher } from "@/core/api/fetcher";
-import { loadExtensions } from "@/core/extensions/api";
+import {
+  loadExtensions,
+  reloadExtensions,
+  updateExtensionEnabled,
+  validateExtensions,
+} from "@/core/extensions/api";
 
 const mockedFetch = rs.mocked(fetcher);
 
@@ -70,5 +75,65 @@ describe("loadExtensions", () => {
       status: 500,
       message: "Registry unavailable",
     });
+  });
+});
+
+describe("extension management api", () => {
+  test("validateExtensions posts to the validate endpoint", async () => {
+    mockedFetch.mockResolvedValueOnce(
+      jsonResponse(200, { valid: true, count: 2, errors: [] }),
+    );
+
+    await expect(validateExtensions()).resolves.toEqual({
+      valid: true,
+      count: 2,
+      errors: [],
+    });
+    expect(mockedFetch).toHaveBeenCalledWith("/api/extensions/validate", {
+      method: "POST",
+    });
+  });
+
+  test("reloadExtensions posts to the reload endpoint", async () => {
+    mockedFetch.mockResolvedValueOnce(jsonResponse(200, { count: 0, extensions: [] }));
+
+    await reloadExtensions({ kind: "tool" });
+
+    expect(mockedFetch).toHaveBeenCalledWith("/api/extensions/reload?kind=tool", {
+      method: "POST",
+    });
+  });
+
+  test("updateExtensionEnabled writes enabled state", async () => {
+    mockedFetch.mockResolvedValueOnce(
+      jsonResponse(200, {
+        extension: {
+          kind: "skill",
+          name: "market-research",
+          enabled: true,
+          source: "local",
+          description: "",
+          tags: [],
+          metadata: {},
+          requires: [],
+        },
+      }),
+    );
+
+    await expect(
+      updateExtensionEnabled("skill", "market-research", true),
+    ).resolves.toMatchObject({
+      extension: { name: "market-research", enabled: true },
+    });
+    expect(mockedFetch).toHaveBeenCalledWith(
+      "/api/extensions/skill/market-research",
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ enabled: true }),
+      },
+    );
   });
 });

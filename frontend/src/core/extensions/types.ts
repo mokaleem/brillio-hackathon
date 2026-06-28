@@ -22,3 +22,13 @@ export interface ExtensionsResponse {
   extensions: ExtensionDescriptor[];
   count: number;
 }
+
+export interface ExtensionValidateResponse {
+  valid: boolean;
+  count: number;
+  errors: string[];
+}
+
+export interface ExtensionUpdateResponse {
+  extension: ExtensionDescriptor;
+}
