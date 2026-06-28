@@ -182,6 +182,21 @@ def _demo_registry() -> dict:
                 "metadata": {"group": "reporting"},
             },
             {
+                "kind": "mcp",
+                "name": "local-docs",
+                "enabled": False,
+                "source": "local",
+                "description": "Example stdio MCP server descriptor for internal documentation search",
+                "display_name": "Local Docs MCP",
+                "category": "Knowledge",
+                "metadata": {
+                    "type": "stdio",
+                    "command": "python",
+                    "args": ["-m", "internal_mcps.local_docs"],
+                    "env": {"DOCS_ROOT": "$DOCS_ROOT"},
+                },
+            },
+            {
                 "kind": "skill",
                 "name": "market-research",
                 "enabled": False,

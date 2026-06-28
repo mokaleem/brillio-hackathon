@@ -72,6 +72,26 @@
       }
     },
     {
+      "kind": "mcp",
+      "name": "local-docs",
+      "enabled": false,
+      "source": "local",
+      "description": "Example stdio MCP server descriptor for internal documentation search",
+      "display_name": "Local Docs MCP",
+      "category": "Knowledge",
+      "metadata": {
+        "type": "stdio",
+        "command": "python",
+        "args": [
+          "-m",
+          "internal_mcps.local_docs"
+        ],
+        "env": {
+          "DOCS_ROOT": "$DOCS_ROOT"
+        }
+      }
+    },
+    {
       "kind": "skill",
       "name": "market-research",
       "enabled": false,
