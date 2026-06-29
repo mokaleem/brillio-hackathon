@@ -45,9 +45,9 @@ jobs:
         working-directory: backend
         run: make lint
 
-      - name: Run registry and journal tests
+      - name: Run registry, journal, and harness SDK tests
         working-directory: backend
-        run: uv run pytest tests/test_extensions_router.py tests/test_run_journal.py -q
+        run: uv run pytest tests/test_extensions_router.py tests/test_run_journal.py tests/test_harness_boundary.py -q
 
       - name: Run production readiness check
         working-directory: backend

@@ -8,11 +8,15 @@ This test scans all Python files in the harness package and fails if any
 """
 
 import ast
+import os
+import subprocess
 import tomllib
+import venv
 from pathlib import Path
 
 HARNESS_ROOT = Path(__file__).parent.parent / "packages" / "harness" / "deerflow"
 HARNESS_PACKAGE_ROOT = HARNESS_ROOT.parent
+BACKEND_ROOT = HARNESS_PACKAGE_ROOT.parent.parent
 
 BANNED_PREFIXES = ("app.",)
 
@@ -34,6 +38,26 @@ def _collect_imports(filepath: Path) -> list[tuple[int, str]]:
             if node.module:
                 results.append((node.lineno, node.module))
     return results
+
+
+def _run(command: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    completed = subprocess.run(
+        command,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
+    assert completed.returncode == 0, f"{' '.join(command)} failed:\n{completed.stdout}"
+    return completed
+
+
+def _venv_python(venv_dir: Path) -> Path:
+    if os.name == "nt":
+        return venv_dir / "Scripts" / "python.exe"
+    return venv_dir / "bin" / "python"
 
 
 def test_harness_does_not_import_app():
@@ -64,6 +88,8 @@ def test_harness_public_api_exports_stable_sdk_surface():
         "ExtensionDescriptor",
         "ExtensionKind",
         "ExtensionManifest",
+        "generate_csv_file",
+        "generate_html_report",
         "generate_pdf_report",
         "load_extension_catalog",
         "validate_extension_registry",
@@ -71,3 +97,49 @@ def test_harness_public_api_exports_stable_sdk_surface():
 
     assert expected.issubset(set(deerflow.__all__))
     assert deerflow.ExtensionKind.TOOL.value == "tool"
+
+
+def test_harness_wheel_installs_and_imports_public_sdk(tmp_path: Path):
+    dist_dir = tmp_path / "dist"
+    _run(["uv", "build", "packages/harness", "--wheel", "--out-dir", str(dist_dir)], cwd=BACKEND_ROOT)
+
+    wheels = sorted(dist_dir.glob("deerflow_harness-*.whl"))
+    assert len(wheels) == 1
+
+    venv_dir = tmp_path / "sdk-venv"
+    venv.EnvBuilder(with_pip=True, system_site_packages=True).create(venv_dir)
+    python = _venv_python(venv_dir)
+
+    _run(["uv", "pip", "install", "--python", str(python), str(wheels[0])], cwd=tmp_path)
+
+    smoke = """
+from pathlib import Path
+import sys
+
+import deerflow
+from deerflow import (
+    DeerFlowClient,
+    ExtensionKind,
+    generate_csv_file,
+    generate_html_report,
+    generate_pdf_report,
+    load_extension_catalog,
+    validate_extension_registry,
+)
+
+installed_from = Path(deerflow.__file__).resolve()
+venv_root = Path(sys.prefix).resolve()
+
+assert str(installed_from).startswith(str(venv_root)), installed_from
+assert deerflow.__version__ == "2.1.0"
+assert ExtensionKind.TOOL.value == "tool"
+assert callable(DeerFlowClient)
+assert callable(load_extension_catalog)
+assert callable(validate_extension_registry)
+assert callable(generate_csv_file)
+assert callable(generate_html_report)
+assert callable(generate_pdf_report)
+"""
+
+    env = {**os.environ, "PYTHONPATH": ""}
+    _run([str(python), "-c", smoke], cwd=tmp_path, env=env)
