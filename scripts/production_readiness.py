@@ -205,21 +205,32 @@ def _check_demo_docs(root: Path) -> CheckResult:
     docs = [
         root / "docs" / "hackathon-demo.md",
         root / "docs" / "extension-registry-schema.md",
+        root / "docs" / "split-ui-deployment.md",
     ]
     missing = [path.relative_to(root).as_posix() for path in docs if not path.is_file()]
     if missing:
         return CheckResult("demo docs", False, "missing: " + ", ".join(missing))
     schema = docs[1].read_text(encoding="utf-8")
+    split_ui = docs[2].read_text(encoding="utf-8")
     required_phrases = [
         "Extension Registry Schema",
         "Import Guardrails",
         "Minimal External Registry Example",
     ]
     missing_phrases = [phrase for phrase in required_phrases if phrase not in schema]
+    split_ui_required = [
+        "Split UI Deployment Guide",
+        "DEER_FLOW_INTERNAL_GATEWAY_BASE_URL",
+        "NEXT_PUBLIC_BACKEND_BASE_URL",
+        "GATEWAY_CORS_ORIGINS",
+    ]
+    missing_split_ui = [phrase for phrase in split_ui_required if phrase not in split_ui]
+    if missing_split_ui:
+        return CheckResult("demo docs", False, "split UI guide missing: " + ", ".join(missing_split_ui))
     return CheckResult(
         "demo docs",
         not missing_phrases,
-        "schema and demo guide present" if not missing_phrases else "schema missing: " + ", ".join(missing_phrases),
+        "schema, demo guide, and split UI guide present" if not missing_phrases else "schema missing: " + ", ".join(missing_phrases),
     )
 
 

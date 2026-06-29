@@ -16,6 +16,8 @@ The key proof points are:
 
 Registry schema reference: `docs/extension-registry-schema.md`
 
+Split UI deployment reference: `docs/split-ui-deployment.md`
+
 ## Setup
 
 Run from the repository root:
