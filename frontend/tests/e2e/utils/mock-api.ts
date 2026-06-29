@@ -466,6 +466,18 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     return route.fallback();
   });
 
+  // Suggestions config — keeps input-box tests independent from the gateway.
+  void page.route("**/api/suggestions/config", (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ enabled: false }),
+      });
+    }
+    return route.fallback();
+  });
+
   // Follow-up suggestions — input box auto-suggest after AI response
   void page.route("**/api/threads/*/suggestions", (route) => {
     if (route.request().method() === "POST") {
