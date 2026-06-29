@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   BotIcon,
+  FlaskConicalIcon,
   PackageOpenIcon,
   RefreshCcwIcon,
   SparklesIcon,
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { loadExtensions } from "@/core/extensions/api";
 import {
+  buildDemoConversationPrompt,
   buildExtensionPrompt,
   extensionDisplayName,
   formatExtensionKind,
@@ -120,30 +122,56 @@ export function CapabilityMenu({
           ) : enabledCount === 0 ? (
             <CapabilityStatus icon="empty" label="No enabled extensions" />
           ) : (
-            KIND_ORDER.map((kind) => {
-              const items = grouped[kind];
-              if (items.length === 0) {
-                return null;
-              }
-
-              return (
-                <div key={kind}>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel className="text-muted-foreground text-xs">
-                    {formatExtensionKind(kind)}
-                  </DropdownMenuLabel>
-                  {items.slice(0, 6).map((extension) => (
-                    <CapabilityItem
-                      key={`${extension.kind}:${extension.name}`}
-                      extension={extension}
-                      onSelect={() =>
-                        onInsertPrompt(buildExtensionPrompt(extension))
-                      }
-                    />
-                  ))}
+            <>
+              <PromptInputActionMenuItem
+                onSelect={() =>
+                  onInsertPrompt(
+                    buildDemoConversationPrompt(
+                      capabilitiesQuery.data?.extensions ?? [],
+                    ),
+                  )
+                }
+              >
+                <div className="flex min-w-0 flex-1 items-start gap-2">
+                  <div className="bg-muted mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md border">
+                    <FlaskConicalIcon className="text-muted-foreground size-3.5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">
+                      Hackathon demo flow
+                    </div>
+                    <div className="text-muted-foreground mt-0.5 line-clamp-2 text-xs">
+                      Insert a ready-to-run prompt for registry discovery,
+                      artifacts, and Python execution.
+                    </div>
+                  </div>
                 </div>
-              );
-            })
+              </PromptInputActionMenuItem>
+              {KIND_ORDER.map((kind) => {
+                const items = grouped[kind];
+                if (items.length === 0) {
+                  return null;
+                }
+
+                return (
+                  <div key={kind}>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel className="text-muted-foreground text-xs">
+                      {formatExtensionKind(kind)}
+                    </DropdownMenuLabel>
+                    {items.slice(0, 6).map((extension) => (
+                      <CapabilityItem
+                        key={`${extension.kind}:${extension.name}`}
+                        extension={extension}
+                        onSelect={() =>
+                          onInsertPrompt(buildExtensionPrompt(extension))
+                        }
+                      />
+                    ))}
+                  </div>
+                );
+              })}
+            </>
           )}
         </DropdownMenuGroup>
       </PromptInputActionMenuContent>

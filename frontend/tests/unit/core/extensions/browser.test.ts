@@ -3,6 +3,7 @@ import { describe, expect, test } from "@rstest/core";
 import {
   applyExtensionEnabledUpdate,
   buildExtensionPrompt,
+  buildDemoConversationPrompt,
   extensionDisplayName,
   filterExtensions,
   formatExtensionKind,
@@ -140,5 +141,18 @@ describe("extension browser helpers", () => {
     expect(buildExtensionPrompt(extensions[0]!)).toBe("Ask Finance Analyst to ");
     expect(buildExtensionPrompt(extensions[2]!)).toBe("/quarterly-report ");
     expect(buildExtensionPrompt(extensions[1]!)).toBe("Use market-data-tool to ");
+  });
+
+  test("builds deterministic hackathon demo prompt from enabled capabilities", () => {
+    const prompt = buildDemoConversationPrompt(extensions);
+
+    expect(prompt).toContain("Run the Brillio hackathon internal assistant demo");
+    expect(prompt).toContain("Agent: Finance Analyst (finance-analyst)");
+    expect(prompt).toContain("Skill: quarterly-report (quarterly-report)");
+    expect(prompt).not.toContain("market-data-tool (market-data-tool)");
+    expect(prompt).toContain("Use HTML Report to create an HTML artifact");
+    expect(prompt).toContain(
+      "internal_tools.python_examples:summarize_metrics",
+    );
   });
 });

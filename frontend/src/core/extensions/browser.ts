@@ -131,6 +131,35 @@ export function buildExtensionPrompt(extension: ExtensionDescriptor): string {
   return `Use ${label} to `;
 }
 
+export function buildDemoConversationPrompt(
+  extensions: ExtensionDescriptor[],
+): string {
+  const enabled = extensions.filter((extension) => extension.enabled);
+  const enabledSummary = enabled.length
+    ? enabled
+        .map(
+          (extension) =>
+            `- ${formatExtensionKind(extension.kind)}: ${extensionDisplayName(extension)} (${extension.name})`,
+        )
+        .join("\n")
+    : "- No enabled registry capabilities were returned by the catalog.";
+
+  return [
+    "Run the Brillio hackathon internal assistant demo end to end.",
+    "",
+    "Use the dynamically loaded registry capabilities discovered by the UI:",
+    enabledSummary,
+    "",
+    "Demo steps:",
+    "1. Briefly list the enabled agents, tools, skills, and MCP servers you can see from the registry catalog.",
+    "2. Use HTML Report to create an HTML artifact titled Hackathon Readiness with sections for dynamic loading, harness separation, and judge flow.",
+    '3. Use CSV Export to create rows_json for [{"capability":"agents","status":"dynamic","score":95},{"capability":"tools","status":"registry-loaded","score":98},{"capability":"skills","status":"discoverable","score":92}].',
+    "4. Use PDF Report to create a PDF artifact titled Executive Demo Summary with three concise sections.",
+    '5. Use Python Function to run internal_tools.python_examples:summarize_metrics with kwargs_json {"rows":[{"value":10},{"value":20},{"value":30}]}.',
+    "6. Finish with a concise summary that includes generated artifact paths, the Python result, and any unavailable capability categories.",
+  ].join("\n");
+}
+
 function renderExtensionPromptTemplate(
   template: string,
   extension: ExtensionDescriptor,
