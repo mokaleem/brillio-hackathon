@@ -17,6 +17,12 @@ export type ExtensionSummary = {
   byKind: Record<ExtensionKind, number>;
 };
 
+export type ExtensionKindConfigSummary = {
+  total: number;
+  enabled: number;
+  disabled: number;
+};
+
 const EXTENSION_KINDS: ExtensionKind[] = ["agent", "mcp", "tool", "skill"];
 
 export function summarizeExtensions(
@@ -40,6 +46,33 @@ export function summarizeExtensions(
     disabled: extensions.length - enabled,
     byKind,
   };
+}
+
+export function summarizeExtensionConfig(
+  extensions: ExtensionDescriptor[],
+): Record<ExtensionKind, ExtensionKindConfigSummary> {
+  const summary = Object.fromEntries(
+    EXTENSION_KINDS.map((kind) => [
+      kind,
+      {
+        total: 0,
+        enabled: 0,
+        disabled: 0,
+      },
+    ]),
+  ) as Record<ExtensionKind, ExtensionKindConfigSummary>;
+
+  for (const extension of extensions) {
+    const kindSummary = summary[extension.kind];
+    kindSummary.total += 1;
+    if (extension.enabled) {
+      kindSummary.enabled += 1;
+    } else {
+      kindSummary.disabled += 1;
+    }
+  }
+
+  return summary;
 }
 
 export function filterExtensions(

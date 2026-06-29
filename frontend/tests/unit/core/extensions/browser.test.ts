@@ -10,6 +10,7 @@ import {
   getExtensionExamplePrompts,
   getExtensionPromptTemplate,
   requiresCapabilityApproval,
+  summarizeExtensionConfig,
   summarizeExtensions,
 } from "@/core/extensions/browser";
 import type { ExtensionDescriptor } from "@/core/extensions/types";
@@ -66,6 +67,31 @@ describe("extension browser helpers", () => {
         mcp: 0,
         tool: 1,
         skill: 1,
+      },
+    });
+  });
+
+  test("summarizes enabled and disabled configuration by kind", () => {
+    expect(summarizeExtensionConfig(extensions)).toEqual({
+      agent: {
+        total: 1,
+        enabled: 1,
+        disabled: 0,
+      },
+      mcp: {
+        total: 0,
+        enabled: 0,
+        disabled: 0,
+      },
+      tool: {
+        total: 1,
+        enabled: 0,
+        disabled: 1,
+      },
+      skill: {
+        total: 1,
+        enabled: 1,
+        disabled: 0,
       },
     });
   });

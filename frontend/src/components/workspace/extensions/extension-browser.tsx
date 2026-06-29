@@ -57,6 +57,7 @@ import {
   formatExtensionKind,
   getExtensionExamplePrompts,
   getExtensionPromptTemplate,
+  summarizeExtensionConfig,
   summarizeExtensions,
   type ExtensionKindFilter,
   type ExtensionStatusFilter,
@@ -145,6 +146,10 @@ export function ExtensionBrowser() {
 
   const extensions = extensionsQuery.data?.extensions ?? EMPTY_EXTENSIONS;
   const summary = useMemo(() => summarizeExtensions(extensions), [extensions]);
+  const configSummary = useMemo(
+    () => summarizeExtensionConfig(extensions),
+    [extensions],
+  );
   const visibleExtensions = useMemo(
     () => filterExtensions(extensions, { kind, status, query }),
     [extensions, kind, query, status],
@@ -285,6 +290,12 @@ export function ExtensionBrowser() {
         onRetry={() => void healthQuery.refetch()}
       />
 
+      <CapabilityConfigPanel
+        activeKind={kind}
+        summary={configSummary}
+        onKindChange={setKind}
+      />
+
       <section className="flex flex-col gap-3 border-b px-6 py-4 lg:flex-row lg:items-center">
         <label className="relative min-w-0 flex-1">
           <span className="sr-only">Search extensions</span>
@@ -346,12 +357,12 @@ export function ExtensionBrowser() {
           <ExtensionBrowserEmpty />
         ) : (
           <div className="overflow-hidden rounded-lg border">
-            <div className="bg-muted/50 text-muted-foreground hidden grid-cols-[minmax(220px,1.4fr)_110px_minmax(180px,1fr)_110px_96px] gap-4 border-b px-4 py-2 text-xs font-medium lg:grid">
+            <div className="bg-muted/50 text-muted-foreground hidden grid-cols-[minmax(220px,1.4fr)_110px_minmax(180px,1fr)_110px_132px] gap-4 border-b px-4 py-2 text-xs font-medium lg:grid">
               <span>Extension</span>
               <span>Type</span>
               <span>Source</span>
               <span>Risk</span>
-              <span className="text-right">Enabled</span>
+              <span className="text-right">Configuration</span>
             </div>
             <ul className="divide-y">
               {visibleExtensions.map((extension) => (
@@ -367,6 +378,71 @@ export function ExtensionBrowser() {
         )}
       </main>
     </div>
+  );
+}
+
+function CapabilityConfigPanel({
+  activeKind,
+  summary,
+  onKindChange,
+}: {
+  activeKind: ExtensionKindFilter;
+  summary: Record<
+    ExtensionKind,
+    {
+      total: number;
+      enabled: number;
+      disabled: number;
+    }
+  >;
+  onKindChange: (kind: ExtensionKindFilter) => void;
+}) {
+  return (
+    <section className="border-b px-6 py-4">
+      <div className="mb-3 flex min-w-0 items-center gap-2">
+        <WrenchIcon className="text-muted-foreground size-4" />
+        <h2 className="text-sm font-semibold">Capability Configuration</h2>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {kindOptions
+          .filter(
+            (
+              option,
+            ): option is {
+              value: ExtensionKind;
+              label: string;
+            } => option.value !== "all",
+          )
+          .map((option) => {
+            const counts = summary[option.value];
+            const Icon = kindIcon[option.value];
+            return (
+              <Button
+                key={option.value}
+                type="button"
+                variant={activeKind === option.value ? "default" : "outline"}
+                className="h-auto justify-start gap-3 px-3 py-3 text-left"
+                onClick={() =>
+                  onKindChange(
+                    activeKind === option.value ? "all" : option.value,
+                  )
+                }
+              >
+                <Icon className="size-4 shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">
+                    {option.label}
+                  </span>
+                  <span className="block text-xs opacity-80">
+                    {counts.enabled}/{counts.total} enabled
+                    {counts.disabled > 0 ? ` - ${counts.disabled} off` : ""}
+                  </span>
+                </span>
+              </Button>
+            );
+          })}
+      </div>
+    </section>
   );
 }
 
@@ -869,7 +945,7 @@ function ExtensionRow({
   const hasPromptMetadata =
     promptTemplate !== null || examplePrompts.length > 0;
   return (
-    <li className="grid gap-3 px-4 py-4 lg:grid-cols-[minmax(220px,1.4fr)_110px_minmax(180px,1fr)_110px_96px] lg:items-center">
+    <li className="grid gap-3 px-4 py-4 lg:grid-cols-[minmax(220px,1.4fr)_110px_minmax(180px,1fr)_110px_132px] lg:items-center">
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-3">
           <div className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-md border">
@@ -964,7 +1040,9 @@ function ExtensionRow({
       </div>
 
       <div className="flex items-center justify-between gap-3 lg:justify-end">
-        <span className="text-muted-foreground text-sm lg:hidden">Enabled</span>
+        <Badge variant={extension.enabled ? "default" : "secondary"}>
+          {extension.enabled ? "Enabled" : "Disabled"}
+        </Badge>
         <Switch
           checked={extension.enabled}
           disabled={pending}

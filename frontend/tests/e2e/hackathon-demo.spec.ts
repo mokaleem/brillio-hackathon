@@ -173,6 +173,11 @@ const blockedExtension: MockExtension = {
 
 function mockExtensionRegistryAPI(page: Page) {
   let extensions = [...demoExtensions];
+  const enablementUpdates: {
+    kind: ExtensionKind;
+    name: string;
+    enabled: boolean;
+  }[] = [];
 
   void page.route("**/api/extensions**", async (route) => {
     const request = route.request();
@@ -267,8 +272,46 @@ function mockExtensionRegistryAPI(page: Page) {
       });
     }
 
+    if (request.method() === "PUT" && pathname.startsWith("/api/extensions/")) {
+      const [, , , kind, name] = pathname.split("/");
+      const body = request.postDataJSON() as { enabled?: boolean };
+      expect(["agent", "mcp", "tool", "skill"]).toContain(kind);
+      expect(name).toBeTruthy();
+      expect(typeof body.enabled).toBe("boolean");
+      if (
+        !kind ||
+        !["agent", "mcp", "tool", "skill"].includes(kind) ||
+        !name ||
+        typeof body.enabled !== "boolean"
+      ) {
+        return route.abort();
+      }
+      const enabled = body.enabled;
+      enablementUpdates.push({
+        kind: kind as ExtensionKind,
+        name,
+        enabled,
+      });
+      const updated = extensions.find(
+        (extension) => extension.kind === kind && extension.name === name,
+      );
+      expect(updated).toBeTruthy();
+      extensions = extensions.map((extension) =>
+        extension.kind === kind && extension.name === name
+          ? { ...extension, enabled }
+          : extension,
+      );
+      return fulfillJson(route, {
+        extension: extensions.find(
+          (extension) => extension.kind === kind && extension.name === name,
+        ),
+      });
+    }
+
     return route.fallback();
   });
+
+  return { enablementUpdates };
 }
 
 function fulfillJson(route: Route, body: unknown) {
@@ -282,12 +325,66 @@ function fulfillJson(route: Route, body: unknown) {
 test.describe("Hackathon demo flow", () => {
   test.beforeEach(async ({ page }) => {
     mockLangGraphAPI(page);
-    mockExtensionRegistryAPI(page);
+  });
+
+  test("enables and disables registry capabilities from the config UI", async ({
+    page,
+  }) => {
+    const registry = mockExtensionRegistryAPI(page);
+    await page.goto("/workspace/extensions");
+
+    await expect(
+      page.getByRole("heading", { name: "Capability Configuration" }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByRole("button", { name: /MCPs 0\/1/i }),
+    ).toBeVisible();
+
+    const localDocsRow = page
+      .getByRole("listitem")
+      .filter({ hasText: "Local Docs" });
+    await expect(
+      localDocsRow.getByText("Disabled", { exact: true }),
+    ).toBeVisible();
+
+    await localDocsRow
+      .getByRole("switch", { name: "Enable Local Docs" })
+      .click();
+    await expect(
+      localDocsRow.getByText("Enabled", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      localDocsRow.getByRole("switch", { name: "Disable Local Docs" }),
+    ).toBeChecked();
+    expect(registry.enablementUpdates).toContainEqual({
+      kind: "mcp",
+      name: "local-docs",
+      enabled: true,
+    });
+    await expect(
+      page.getByRole("button", { name: /MCPs 1\/1/i }),
+    ).toBeVisible();
+
+    await localDocsRow
+      .getByRole("switch", { name: "Disable Local Docs" })
+      .click();
+    await expect(
+      localDocsRow.getByText("Disabled", { exact: true }),
+    ).toBeVisible();
+    expect(registry.enablementUpdates).toContainEqual({
+      kind: "mcp",
+      name: "local-docs",
+      enabled: false,
+    });
+    await expect(
+      page.getByRole("button", { name: /MCPs 0\/1/i }),
+    ).toBeVisible();
   });
 
   test("imports a registry extension and launches the chat demo prompt", async ({
     page,
   }) => {
+    mockExtensionRegistryAPI(page);
     await page.goto("/workspace/extensions");
 
     await expect(
@@ -376,6 +473,7 @@ test.describe("Hackathon demo flow", () => {
   });
 
   test("surfaces blocked registry import risk messaging", async ({ page }) => {
+    mockExtensionRegistryAPI(page);
     await page.goto("/workspace/extensions");
     await expect(
       page.getByRole("heading", { name: "Extension Registry" }),
@@ -418,6 +516,7 @@ test.describe("Hackathon demo flow", () => {
   test("requires approval before inserting high-risk chat capability", async ({
     page,
   }) => {
+    mockExtensionRegistryAPI(page);
     await page.goto("/workspace/chats/new");
 
     const textarea = page.getByPlaceholder(/how can i assist you/i);
