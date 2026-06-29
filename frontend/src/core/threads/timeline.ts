@@ -1,6 +1,12 @@
-export type RunTimelinePhase = "start" | "end" | "stream" | "event";
+export type RunTimelinePhase = "start" | "end" | "stream" | "event" | "error";
 
-export type RunTimelineKind = "run" | "chain" | "tool" | "model" | "custom";
+export type RunTimelineKind =
+  | "run"
+  | "chain"
+  | "tool"
+  | "model"
+  | "custom"
+  | "audit";
 
 export type RunTimelineEvent = {
   id: string;
@@ -66,6 +72,38 @@ export function normalizeLangChainTimelineEvent(
   };
 }
 
+export function normalizeCapabilityAuditTimelineEvent(
+  event: unknown,
+  index: number,
+): RunTimelineEvent | null {
+  if (!isRecord(event)) {
+    return null;
+  }
+
+  const eventName = readString(event.event);
+  if (
+    eventName !== "on_tool_start" &&
+    eventName !== "on_tool_end" &&
+    eventName !== "on_tool_error"
+  ) {
+    return null;
+  }
+
+  const name = readString(event.name) ?? "unknown_tool";
+  const phase = phaseFromEventName(eventName);
+  const data = isRecord(event.data) ? event.data : null;
+
+  return {
+    id: `audit:${eventName}:${name}:${index}`,
+    timestamp: new Date().toISOString(),
+    kind: "audit",
+    phase,
+    name,
+    label: `Capability ${formatEventName(name)} ${formatPhase(phase)}`,
+    summary: summarizeEventData(data),
+  };
+}
+
 export function normalizeCustomTimelineEvent(
   event: unknown,
   index: number,
@@ -101,6 +139,9 @@ function phaseFromEventName(eventName: string): RunTimelinePhase {
   if (eventName.endsWith("_stream")) {
     return "stream";
   }
+  if (eventName.endsWith("_error")) {
+    return "error";
+  }
   return "event";
 }
 
@@ -117,7 +158,9 @@ function kindFromEventName(eventName: string): RunTimelineKind {
   return "custom";
 }
 
-function summarizeEventData(data: Record<string, unknown> | null): string | null {
+function summarizeEventData(
+  data: Record<string, unknown> | null,
+): string | null {
   if (!data) {
     return null;
   }
@@ -148,6 +191,9 @@ function formatPhase(phase: RunTimelinePhase): string {
   }
   if (phase === "stream") {
     return "streamed";
+  }
+  if (phase === "error") {
+    return "failed";
   }
   return "event";
 }
@@ -192,7 +238,8 @@ function isRunTimelineKind(value: unknown): value is RunTimelineKind {
     value === "chain" ||
     value === "tool" ||
     value === "model" ||
-    value === "custom"
+    value === "custom" ||
+    value === "audit"
   );
 }
 
@@ -201,6 +248,7 @@ function isRunTimelinePhase(value: unknown): value is RunTimelinePhase {
     value === "start" ||
     value === "end" ||
     value === "stream" ||
-    value === "event"
+    value === "event" ||
+    value === "error"
   );
 }

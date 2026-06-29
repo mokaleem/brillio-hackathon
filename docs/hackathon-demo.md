@@ -11,7 +11,7 @@ The key proof points are:
 - Registry-driven dynamic loading for agents, MCPs, tools, and skills.
 - Admin registry management with validation, health, toggles, and import preview.
 - Chat capability picker with a one-click hackathon demo prompt.
-- Live run trace surfaced in the UI and persisted to thread state for refresh/export.
+- Live run trace and capability execution audit rows surfaced in the UI and persisted to thread state for refresh/export.
 - Artifact tools for HTML, CSV, PDF, plus allowlisted Python function execution.
 
 ## Setup
@@ -63,7 +63,7 @@ Expected output includes:
 4. Click `Import`, paste or upload a registry JSON manifest, click `Preview`, select entries, then `Import Selected`.
 5. Go to `/workspace`, open `Capabilities`, and choose `Hackathon demo flow`.
 6. Send the inserted prompt. It asks the assistant to discover registry capabilities, generate HTML/CSV/PDF artifacts, and run `internal_tools.python_examples:summarize_metrics`.
-7. Open `Trace` in the chat header to show run start/end, tool events, model events, and orchestration events.
+7. Open `Trace` in the chat header to show run start/end, model events, tool events, and capability audit rows for started/finished/failed executions.
 8. Export the conversation as JSON or Markdown. The persisted `Run Trace` is included with the final answer.
 
 ## Expected Demo Artifacts

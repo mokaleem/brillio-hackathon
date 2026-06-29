@@ -6,6 +6,7 @@ import {
   Clock3Icon,
   PackageOpenIcon,
   RouteIcon,
+  ShieldCheckIcon,
   WrenchIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -28,6 +29,7 @@ import { cn } from "@/lib/utils";
 const KIND_ICON: Record<RunTimelineKind, typeof RouteIcon> = {
   chain: RouteIcon,
   custom: PackageOpenIcon,
+  audit: ShieldCheckIcon,
   model: BotIcon,
   run: Clock3Icon,
   tool: WrenchIcon,
@@ -85,7 +87,7 @@ export function RunTimelineTrigger({
               </div>
             </div>
           ) : (
-            <ol className="relative space-y-3 before:absolute before:top-2 before:bottom-2 before:left-4 before:w-px before:bg-border">
+            <ol className="before:bg-border relative space-y-3 before:absolute before:top-2 before:bottom-2 before:left-4 before:w-px">
               {recentEvents.map((event) => (
                 <TimelineRow key={event.id} event={event} />
               ))}
@@ -117,6 +119,8 @@ function TimelineRow({ event }: { event: RunTimelineEvent }) {
             className={cn(
               "shrink-0 capitalize",
               event.phase === "end" && "border-emerald-500/30 text-emerald-700",
+              event.phase === "error" &&
+                "border-destructive/30 text-destructive",
             )}
           >
             {event.phase === "end" && <CheckCircle2Icon className="size-3" />}

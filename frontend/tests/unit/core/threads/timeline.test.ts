@@ -3,6 +3,7 @@ import { describe, expect, test } from "@rstest/core";
 import {
   buildRunLifecycleEvent,
   compactRunTimelineEvents,
+  normalizeCapabilityAuditTimelineEvent,
   normalizeCustomTimelineEvent,
   normalizeLangChainTimelineEvent,
   readRunTimelineEvents,
@@ -53,17 +54,55 @@ describe("run timeline helpers", () => {
     });
   });
 
-  test("reads and compacts persisted timeline events", () => {
-    const first = buildRunLifecycleEvent("start", 0);
-    const second = buildRunLifecycleEvent("end", 1);
+  test("normalizes capability audit tool events", () => {
+    expect(
+      normalizeCapabilityAuditTimelineEvent(
+        {
+          event: "on_tool_end",
+          name: "html_report",
+          data: { output: "HTML report generated" },
+        },
+        8,
+      ),
+    ).toMatchObject({
+      id: "audit:on_tool_end:html_report:8",
+      kind: "audit",
+      phase: "end",
+      name: "html_report",
+      label: "Capability Html Report finished",
+      summary: "HTML report generated",
+    });
 
     expect(
-      readRunTimelineEvents([
-        first,
-        { id: "bad", kind: "run" },
-        second,
-        null,
-      ]),
+      normalizeCapabilityAuditTimelineEvent(
+        {
+          event: "on_tool_error",
+          name: "python_function",
+          data: { error: "not allowlisted" },
+        },
+        9,
+      ),
+    ).toMatchObject({
+      kind: "audit",
+      phase: "error",
+      label: "Capability Python Function failed",
+      summary: "error",
+    });
+  });
+
+  test("reads and compacts persisted timeline events", () => {
+    const first = buildRunLifecycleEvent("start", 0);
+    const second = normalizeCapabilityAuditTimelineEvent(
+      {
+        event: "on_tool_error",
+        name: "python_function",
+        data: { error: "not allowlisted" },
+      },
+      1,
+    )!;
+
+    expect(
+      readRunTimelineEvents([first, { id: "bad", kind: "run" }, second, null]),
     ).toEqual([first, second]);
     expect(compactRunTimelineEvents([first, second], 1)).toEqual([second]);
   });

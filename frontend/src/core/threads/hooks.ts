@@ -34,6 +34,7 @@ import {
 import {
   buildRunLifecycleEvent,
   compactRunTimelineEvents,
+  normalizeCapabilityAuditTimelineEvent,
   normalizeCustomTimelineEvent,
   normalizeLangChainTimelineEvent,
   readRunTimelineEvents,
@@ -750,6 +751,14 @@ export function useThreadStream({
       appendTimelineEvent(
         normalizeLangChainTimelineEvent(event, timelineEventIndexRef.current++),
       );
+      const auditEvent = normalizeCapabilityAuditTimelineEvent(
+        event,
+        timelineEventIndexRef.current,
+      );
+      if (auditEvent) {
+        timelineEventIndexRef.current += 1;
+        appendTimelineEvent(auditEvent);
+      }
       if (event.event === "on_tool_end") {
         listeners.current.onToolEnd?.({
           name: event.name,

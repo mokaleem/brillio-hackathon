@@ -198,13 +198,25 @@ class TestToolCallbacks:
         from langchain_core.messages import ToolMessage
 
         j, store = journal_setup
+        run_id = uuid4()
+        j.on_tool_start({"name": "web_search"}, "query", run_id=run_id, tags=["lead_agent"])
         tool_msg = ToolMessage(content="results", tool_call_id="call_1", name="web_search")
-        j.on_tool_end(tool_msg, run_id=uuid4())
+        j.on_tool_end(tool_msg, run_id=run_id, tags=["lead_agent"])
         await j.flush()
         messages = await store.list_messages("t1")
         assert len(messages) == 1
         assert messages[0]["event_type"] == "llm.tool.result"
         assert messages[0]["content"]["type"] == "tool"
+        events = await store.list_events("t1", "r1")
+        audit_events = [event for event in events if event["category"] == "audit"]
+        assert [event["event_type"] for event in audit_events] == [
+            "capability.execution.start",
+            "capability.execution.end",
+        ]
+        assert audit_events[0]["metadata"]["capability_name"] == "web_search"
+        assert audit_events[0]["metadata"]["caller"] == "lead_agent"
+        assert audit_events[1]["content"]["status"] == "success"
+        assert "duration_ms" in audit_events[1]["metadata"]
 
     @pytest.mark.anyio
     async def test_tool_end_with_command_unwraps_tool_message(self, journal_setup):
@@ -224,13 +236,20 @@ class TestToolCallbacks:
 
     @pytest.mark.anyio
     async def test_on_tool_error_no_crash(self, journal_setup):
-        """on_tool_error should not crash (no event emitted by default)."""
+        """on_tool_error should not crash and should emit an audit row."""
         j, store = journal_setup
-        j.on_tool_error(TimeoutError("timeout"), run_id=uuid4(), name="web_fetch")
+        run_id = uuid4()
+        j.on_tool_start({"name": "web_fetch"}, "url", run_id=run_id, tags=["lead_agent"])
+        j.on_tool_error(TimeoutError("timeout"), run_id=run_id, name="web_fetch")
         await j.flush()
-        # Base implementation does not emit tool_error — just verify no crash
         events = await store.list_events("t1", "r1")
-        assert isinstance(events, list)
+        audit_events = [event for event in events if event["category"] == "audit"]
+        assert [event["event_type"] for event in audit_events] == [
+            "capability.execution.start",
+            "capability.execution.error",
+        ]
+        assert audit_events[1]["metadata"]["error_type"] == "TimeoutError"
+        assert audit_events[1]["content"]["preview"] == "timeout"
 
 
 class TestCustomEvents:
