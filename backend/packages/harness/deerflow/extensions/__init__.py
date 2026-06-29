@@ -9,6 +9,7 @@ from deerflow.extensions.materialize import (
     materialize_tool,
     materialize_tool_config,
 )
+from deerflow.extensions.policy import ExtensionPermissionError, ExtensionRuntimePolicy, require_extension_runtime_permission
 from deerflow.extensions.runtime import get_runtime_extension_manifest_paths, load_runtime_extension_catalog
 from deerflow.extensions.validation import ExtensionRegistryHealth, validate_extension_registry
 
@@ -17,6 +18,8 @@ __all__ = [
     "ExtensionDescriptor",
     "ExtensionKind",
     "ExtensionManifest",
+    "ExtensionPermissionError",
+    "ExtensionRuntimePolicy",
     "ExtensionSource",
     "ExtensionRegistryHealth",
     "RegistryImport",
@@ -30,6 +33,7 @@ __all__ = [
     "materialize_skill_path",
     "materialize_tool",
     "materialize_tool_config",
+    "require_extension_runtime_permission",
     "resolve_python_entrypoint",
     "validate_extension_registry",
 ]

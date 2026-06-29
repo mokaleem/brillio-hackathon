@@ -9,6 +9,7 @@ from deerflow.config.tool_config import ToolConfig
 from deerflow.extensions import (
     ExtensionKind,
     ExtensionManifest,
+    ExtensionPermissionError,
     ExtensionSource,
     execute_python_entrypoint,
     get_runtime_extension_manifest_paths,
@@ -357,6 +358,49 @@ def test_materialize_tool_returns_base_tool() -> None:
     assert tool.name == "ask_clarification"
 
 
+def test_materialize_tool_blocks_high_risk_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS", raising=False)
+    extension = ExtensionManifest.model_validate(
+        {
+            "version": 1,
+            "extensions": [
+                {
+                    "kind": "tool",
+                    "name": "high-risk-tool",
+                    "enabled": True,
+                    "source": "registry",
+                    "entrypoint": "deerflow.tools.builtins.clarification_tool:ask_clarification_tool",
+                    "risk_level": "high",
+                }
+            ],
+        }
+    ).extensions[0]
+
+    with pytest.raises(ExtensionPermissionError, match="blocked by runtime extension policy"):
+        materialize_tool(extension)
+
+
+def test_materialize_tool_allows_high_risk_when_policy_allows_high(monkeypatch) -> None:
+    monkeypatch.setenv("DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS", "low,medium,high")
+    extension = ExtensionManifest.model_validate(
+        {
+            "version": 1,
+            "extensions": [
+                {
+                    "kind": "tool",
+                    "name": "approved-high-risk-tool",
+                    "enabled": True,
+                    "source": "registry",
+                    "entrypoint": "deerflow.tools.builtins.clarification_tool:ask_clarification_tool",
+                    "risk_level": "high",
+                }
+            ],
+        }
+    ).extensions[0]
+
+    assert materialize_tool(extension).name == "ask_clarification"
+
+
 def test_materialize_tool_config_uses_descriptor_metadata_group() -> None:
     extension = ExtensionManifest.model_validate(
         {
@@ -453,6 +497,28 @@ def test_materialize_agent_factory_returns_callable() -> None:
     factory = materialize_agent_factory(extension)
 
     assert factory(81) == 9
+
+
+def test_materialize_agent_factory_blocks_high_risk_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS", raising=False)
+    extension = ExtensionManifest.model_validate(
+        {
+            "version": 1,
+            "extensions": [
+                {
+                    "kind": "agent",
+                    "name": "risky-agent",
+                    "enabled": True,
+                    "source": "registry",
+                    "entrypoint": "math:sqrt",
+                    "risk_level": "high",
+                }
+            ],
+        }
+    ).extensions[0]
+
+    with pytest.raises(ExtensionPermissionError, match="agent:risky-agent"):
+        materialize_agent_factory(extension)
 
 
 def test_validate_extension_registry_reports_missing_import_and_bad_mcp(tmp_path: Path) -> None:

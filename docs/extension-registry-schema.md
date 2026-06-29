@@ -213,6 +213,21 @@ Preview warnings:
 - `risk_level: "high"`.
 - Duplicate descriptors.
 
+## Runtime Permission Policy
+
+Import validation is not the final security boundary. The harness also checks
+extension risk at runtime before materializing registry-backed agents, MCPs,
+tools, or skills.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS` | `low,medium` | Comma-separated risk levels that may be materialized at runtime. Use `low,medium,high` or `all` only after operator approval. |
+
+Descriptors with missing `risk_level` are treated as `medium` for backward
+compatibility. Descriptors marked `high` are blocked by default even if they are
+enabled in a registry file. The runtime logs a policy warning and skips blocked
+registry tools/MCPs/skills/agents instead of exposing them to chat.
+
 ## Minimal External Registry Example
 
 ```json

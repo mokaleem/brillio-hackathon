@@ -117,6 +117,7 @@ def _build_env_file() -> str:
 # Keep local extension packages and registries rooted at this checkout.
 DEERFLOW_EXTENSION_MANIFESTS=registries/demo_extensions.json
 DEER_FLOW_EXTENSIONS_CONFIG_PATH=extensions_config.json
+DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS=low,medium
 
 # Optional direct Gateway wiring. Defaults match make dev.
 # DEER_FLOW_INTERNAL_GATEWAY_BASE_URL=http://localhost:8001

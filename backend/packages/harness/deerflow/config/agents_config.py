@@ -85,12 +85,26 @@ def _load_registry_agent_config(name: str) -> AgentConfig | None:
     _catalog, extension = _get_registry_agent_descriptor(name)
     if extension is None:
         return None
+    from deerflow.extensions import ExtensionPermissionError, require_extension_runtime_permission
+
+    try:
+        require_extension_runtime_permission(extension)
+    except ExtensionPermissionError as exc:
+        logger.warning("Registry agent %s blocked by runtime extension policy: %s", name, exc)
+        return None
     return _agent_config_from_registry_descriptor(extension)
 
 
 def _load_registry_agent_soul(name: str) -> str | None:
     catalog, extension = _get_registry_agent_descriptor(name)
     if extension is None:
+        return None
+    from deerflow.extensions import ExtensionPermissionError, require_extension_runtime_permission
+
+    try:
+        require_extension_runtime_permission(extension)
+    except ExtensionPermissionError as exc:
+        logger.warning("Registry agent %s soul blocked by runtime extension policy: %s", name, exc)
         return None
 
     metadata = extension.metadata or {}
@@ -125,7 +139,17 @@ def _list_registry_agent_configs() -> list[AgentConfig]:
     except Exception:
         logger.exception("Failed to list registry agents")
         return []
-    return [_agent_config_from_registry_descriptor(extension) for extension in catalog.enabled(kind=ExtensionKind.AGENT)]
+    agents: list[AgentConfig] = []
+    for extension in catalog.enabled(kind=ExtensionKind.AGENT):
+        from deerflow.extensions import ExtensionPermissionError, require_extension_runtime_permission
+
+        try:
+            require_extension_runtime_permission(extension)
+        except ExtensionPermissionError as exc:
+            logger.warning("Registry agent %s blocked by runtime extension policy: %s", extension.name, exc)
+            continue
+        agents.append(_agent_config_from_registry_descriptor(extension))
+    return agents
 
 
 def resolve_agent_dir(name: str, *, user_id: str | None = None) -> Path:

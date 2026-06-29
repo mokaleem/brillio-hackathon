@@ -10,11 +10,13 @@ from deerflow.config.extensions_config import McpServerConfig
 from deerflow.config.tool_config import ToolConfig
 from deerflow.extensions.descriptors import ExtensionDescriptor, ExtensionKind
 from deerflow.extensions.entrypoints import resolve_python_entrypoint
+from deerflow.extensions.policy import require_extension_runtime_permission
 from deerflow.reflection import resolve_variable
 
 
 def materialize_tool(extension: ExtensionDescriptor) -> BaseTool:
     _require_kind(extension, ExtensionKind.TOOL)
+    require_extension_runtime_permission(extension)
     if not extension.entrypoint:
         raise ValueError(f"Tool extension '{extension.name}' must define an entrypoint.")
 
@@ -30,6 +32,7 @@ def materialize_tool(extension: ExtensionDescriptor) -> BaseTool:
 
 def materialize_tool_config(extension: ExtensionDescriptor, *, default_group: str = "registry") -> ToolConfig:
     _require_kind(extension, ExtensionKind.TOOL)
+    require_extension_runtime_permission(extension)
     if not extension.entrypoint:
         raise ValueError(f"Tool extension '{extension.name}' must define an entrypoint.")
     group = extension.metadata.get("group") or extension.category or default_group
@@ -38,6 +41,7 @@ def materialize_tool_config(extension: ExtensionDescriptor, *, default_group: st
 
 def materialize_mcp_server_config(extension: ExtensionDescriptor) -> McpServerConfig:
     _require_kind(extension, ExtensionKind.MCP)
+    require_extension_runtime_permission(extension)
     payload = dict(extension.metadata)
     payload.setdefault("enabled", extension.enabled)
     payload.setdefault("description", extension.description)
@@ -46,6 +50,7 @@ def materialize_mcp_server_config(extension: ExtensionDescriptor) -> McpServerCo
 
 def materialize_skill_path(extension: ExtensionDescriptor, *, repo_root: Path | str) -> Path:
     _require_kind(extension, ExtensionKind.SKILL)
+    require_extension_runtime_permission(extension)
     if not extension.entrypoint:
         raise ValueError(f"Skill extension '{extension.name}' must define an entrypoint path.")
     root = Path(repo_root).resolve(strict=False)
@@ -59,6 +64,7 @@ def materialize_skill_path(extension: ExtensionDescriptor, *, repo_root: Path | 
 
 def materialize_agent_factory(extension: ExtensionDescriptor) -> Callable[..., Any]:
     _require_kind(extension, ExtensionKind.AGENT)
+    require_extension_runtime_permission(extension)
     if not extension.entrypoint:
         raise ValueError(f"Agent extension '{extension.name}' must define an entrypoint.")
     return resolve_python_entrypoint(extension.entrypoint)
