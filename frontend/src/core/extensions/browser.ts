@@ -105,15 +105,12 @@ export function extensionDisplayName(extension: ExtensionDescriptor): string {
 }
 
 export function buildExtensionPrompt(extension: ExtensionDescriptor): string {
-  const promptTemplate = metadataString(extension.metadata, "prompt_template");
+  const promptTemplate = getExtensionPromptTemplate(extension);
   if (promptTemplate) {
     return renderExtensionPromptTemplate(promptTemplate, extension);
   }
 
-  const examplePrompt = metadataStringList(
-    extension.metadata,
-    "example_prompts",
-  )[0];
+  const examplePrompt = getExtensionExamplePrompts(extension)[0];
   if (examplePrompt) {
     return examplePrompt;
   }
@@ -129,6 +126,18 @@ export function buildExtensionPrompt(extension: ExtensionDescriptor): string {
     return `Use the ${label} MCP to `;
   }
   return `Use ${label} to `;
+}
+
+export function getExtensionPromptTemplate(
+  extension: ExtensionDescriptor,
+): string | null {
+  return metadataString(extension.metadata, "prompt_template");
+}
+
+export function getExtensionExamplePrompts(
+  extension: ExtensionDescriptor,
+): string[] {
+  return metadataStringList(extension.metadata, "example_prompts");
 }
 
 export function buildDemoConversationPrompt(

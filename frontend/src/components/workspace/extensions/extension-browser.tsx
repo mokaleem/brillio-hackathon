@@ -30,6 +30,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import {
+  loadExtensionHealth,
   loadExtensions,
   reloadExtensions,
   updateExtensionEnabled,
@@ -39,18 +40,22 @@ import {
   applyExtensionEnabledUpdate,
   filterExtensions,
   formatExtensionKind,
+  getExtensionExamplePrompts,
+  getExtensionPromptTemplate,
   summarizeExtensions,
   type ExtensionKindFilter,
   type ExtensionStatusFilter,
 } from "@/core/extensions/browser";
 import type {
   ExtensionDescriptor,
+  ExtensionHealthResponse,
   ExtensionKind,
   ExtensionsResponse,
 } from "@/core/extensions/types";
 import { cn } from "@/lib/utils";
 
 const EXTENSION_QUERY_KEY = ["extensions", "catalog"] as const;
+const EXTENSION_HEALTH_QUERY_KEY = ["extensions", "health"] as const;
 const EMPTY_EXTENSIONS: ExtensionDescriptor[] = [];
 
 const kindOptions: { value: ExtensionKindFilter; label: string }[] = [
@@ -85,6 +90,10 @@ export function ExtensionBrowser() {
     queryKey: EXTENSION_QUERY_KEY,
     queryFn: () => loadExtensions(),
   });
+  const healthQuery = useQuery({
+    queryKey: EXTENSION_HEALTH_QUERY_KEY,
+    queryFn: () => loadExtensionHealth(),
+  });
 
   const extensions = extensionsQuery.data?.extensions ?? EMPTY_EXTENSIONS;
   const summary = useMemo(() => summarizeExtensions(extensions), [extensions]);
@@ -97,6 +106,9 @@ export function ExtensionBrowser() {
     mutationFn: () => reloadExtensions(kind === "all" ? undefined : { kind }),
     onSuccess: (data) => {
       queryClient.setQueryData<ExtensionsResponse>(EXTENSION_QUERY_KEY, data);
+      void queryClient.invalidateQueries({
+        queryKey: EXTENSION_HEALTH_QUERY_KEY,
+      });
       toast.success("Extension registry reloaded");
     },
     onError: (error) => {
@@ -107,6 +119,9 @@ export function ExtensionBrowser() {
   const validateMutation = useMutation({
     mutationFn: validateExtensions,
     onSuccess: (result) => {
+      void queryClient.invalidateQueries({
+        queryKey: EXTENSION_HEALTH_QUERY_KEY,
+      });
       if (result.valid) {
         toast.success(`Registry is valid (${result.count} entries)`);
       } else {
@@ -194,6 +209,15 @@ export function ExtensionBrowser() {
         <SummaryMetric label="Tools" value={summary.byKind.tool} />
         <SummaryMetric label="Skills" value={summary.byKind.skill} />
       </section>
+
+      <ExtensionHealthPanel
+        health={healthQuery.data}
+        isLoading={healthQuery.isLoading}
+        error={
+          healthQuery.error instanceof Error ? healthQuery.error.message : null
+        }
+        onRetry={() => void healthQuery.refetch()}
+      />
 
       <section className="flex flex-col gap-3 border-b px-6 py-4 lg:flex-row lg:items-center">
         <label className="relative min-w-0 flex-1">
@@ -291,6 +315,124 @@ function SummaryMetric({ label, value }: { label: string; value: number }) {
   );
 }
 
+function ExtensionHealthPanel({
+  health,
+  isLoading,
+  error,
+  onRetry,
+}: {
+  health: ExtensionHealthResponse | undefined;
+  isLoading: boolean;
+  error: string | null;
+  onRetry: () => void;
+}) {
+  if (isLoading) {
+    return (
+      <section className="border-b px-6 py-3">
+        <div className="flex items-center gap-3 rounded-lg border px-4 py-3">
+          <RefreshCcwIcon className="text-muted-foreground size-4 animate-spin" />
+          <span className="text-muted-foreground text-sm">
+            Checking registry health
+          </span>
+        </div>
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section className="border-b px-6 py-3">
+        <div className="flex flex-col gap-3 rounded-lg border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <XCircleIcon className="text-destructive size-4" />
+              Registry health unavailable
+            </div>
+            <p className="text-muted-foreground mt-1 truncate text-sm">
+              {error}
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            <RefreshCcwIcon className="size-4" />
+            Retry
+          </Button>
+        </div>
+      </section>
+    );
+  }
+
+  if (!health) {
+    return null;
+  }
+
+  const statusLabel = health.valid ? "Registry healthy" : "Registry invalid";
+  const issueCount = health.errors.length + health.warnings.length;
+
+  return (
+    <section className="border-b px-6 py-3">
+      <div className="rounded-lg border px-4 py-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              {health.valid ? (
+                <CheckCircle2Icon className="size-4 text-emerald-600" />
+              ) : (
+                <XCircleIcon className="text-destructive size-4" />
+              )}
+              <span className="text-sm font-medium">{statusLabel}</span>
+              <Badge variant="outline">{health.count} entries</Badge>
+              {issueCount > 0 && (
+                <Badge variant={health.errors.length > 0 ? "destructive" : "secondary"}>
+                  {issueCount} issue{issueCount === 1 ? "" : "s"}
+                </Badge>
+              )}
+            </div>
+            <div className="text-muted-foreground mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+              {health.manifests.length > 0 ? (
+                health.manifests.map((manifest) => (
+                  <span key={manifest} className="max-w-full truncate font-mono">
+                    {manifest}
+                  </span>
+                ))
+              ) : (
+                <span>No registry manifests configured</span>
+              )}
+            </div>
+          </div>
+          <div className="grid gap-2 text-xs lg:min-w-80">
+            {health.errors.slice(0, 2).map((message) => (
+              <HealthMessage key={message} tone="error" message={message} />
+            ))}
+            {health.warnings.slice(0, 2).map((message) => (
+              <HealthMessage key={message} tone="warning" message={message} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function HealthMessage({
+  tone,
+  message,
+}: {
+  tone: "error" | "warning";
+  message: string;
+}) {
+  return (
+    <div className="text-muted-foreground flex min-w-0 items-start gap-2">
+      <ShieldAlertIcon
+        className={cn(
+          "mt-0.5 size-3.5 shrink-0",
+          tone === "error" ? "text-destructive" : "text-amber-600",
+        )}
+      />
+      <span className="line-clamp-2">{message}</span>
+    </div>
+  );
+}
+
 function ExtensionRow({
   extension,
   pending,
@@ -302,6 +444,10 @@ function ExtensionRow({
 }) {
   const Icon = kindIcon[extension.kind];
   const title = extension.display_name ?? extension.name;
+  const promptTemplate = getExtensionPromptTemplate(extension);
+  const examplePrompts = getExtensionExamplePrompts(extension);
+  const hasPromptMetadata =
+    promptTemplate !== null || examplePrompts.length > 0;
   return (
     <li className="grid gap-3 px-4 py-4 lg:grid-cols-[minmax(220px,1.4fr)_110px_minmax(180px,1fr)_110px_96px] lg:items-center">
       <div className="min-w-0">
@@ -328,6 +474,26 @@ function ExtensionRow({
                 {tag}
               </Badge>
             ))}
+          </div>
+        )}
+        {hasPromptMetadata && (
+          <div className="bg-muted/40 text-muted-foreground mt-3 space-y-1 rounded-md border px-3 py-2 text-xs">
+            {promptTemplate && (
+              <div className="min-w-0">
+                <span className="font-medium text-foreground">
+                  Prompt template:
+                </span>{" "}
+                <span className="font-mono break-words">{promptTemplate}</span>
+              </div>
+            )}
+            {examplePrompts.length > 0 && (
+              <div className="min-w-0">
+                <span className="font-medium text-foreground">
+                  Example prompt:
+                </span>{" "}
+                <span className="break-words">{examplePrompts[0]}</span>
+              </div>
+            )}
           </div>
         )}
       </div>

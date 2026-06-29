@@ -7,6 +7,8 @@ import {
   extensionDisplayName,
   filterExtensions,
   formatExtensionKind,
+  getExtensionExamplePrompts,
+  getExtensionPromptTemplate,
   summarizeExtensions,
 } from "@/core/extensions/browser";
 import type { ExtensionDescriptor } from "@/core/extensions/types";
@@ -135,6 +137,24 @@ describe("extension browser helpers", () => {
     expect(buildExtensionPrompt(extension)).toBe(
       "Pull market data for the current pipeline.",
     );
+    expect(getExtensionExamplePrompts(extension)).toEqual([
+      "Pull market data for the current pipeline.",
+      "Compare market data by region.",
+    ]);
+  });
+
+  test("reads prompt template metadata for management display", () => {
+    const extension: ExtensionDescriptor = {
+      ...extensions[1]!,
+      metadata: {
+        prompt_template: "Use {{display_name}} to ",
+      },
+    };
+
+    expect(getExtensionPromptTemplate(extension)).toBe(
+      "Use {{display_name}} to ",
+    );
+    expect(getExtensionExamplePrompts(extension)).toEqual([]);
   });
 
   test("falls back to kind-specific prompts", () => {
