@@ -96,3 +96,15 @@ print(client.chat("Summarize the configured extension registry."))
 The Gateway and UI are optional deployment layers. A separate UI can talk to the
 Gateway over HTTP, while internal Python services can import this package
 directly.
+
+## Execution Audit Trail
+
+Registry materialized tools write JSONL execution records to
+`$DEER_FLOW_HOME/audit/executions.jsonl` by default. Set
+`DEER_FLOW_AUDIT_LOG_PATH` to write somewhere else, or
+`DEER_FLOW_AUDIT_DISABLED=1` to turn the audit writer off for local tests.
+
+Each record includes timestamp, duration, extension kind/name/source,
+risk level, provenance, summarized inputs and outputs, artifact paths, and
+error metadata. Input summaries include shape and keys rather than full raw
+payloads.

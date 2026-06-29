@@ -4,6 +4,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from deerflow.artifacts import generate_csv_file, generate_html_report, generate_pdf_report
+from deerflow.audit import audit_log_path, record_extension_execution
 from deerflow.extensions import (
     ExtensionCatalog,
     ExtensionDescriptor,
@@ -33,11 +34,13 @@ __all__ = [
     "RegistryImport",
     "StreamEvent",
     "__version__",
+    "audit_log_path",
     "generate_csv_file",
     "generate_html_report",
     "generate_pdf_report",
     "load_extension_catalog",
     "load_extension_manifest",
+    "record_extension_execution",
     "validate_extension_registry",
 ]
 

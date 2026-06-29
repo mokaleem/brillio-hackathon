@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -356,6 +357,57 @@ def test_materialize_tool_returns_base_tool() -> None:
     tool = materialize_tool(extension)
 
     assert tool.name == "ask_clarification"
+
+
+def test_materialized_tool_writes_execution_audit_log(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("DEER_FLOW_HOME", str(tmp_path))
+    monkeypatch.delenv("DEER_FLOW_AUDIT_DISABLED", raising=False)
+    extension = ExtensionManifest.model_validate(
+        {
+            "version": 1,
+            "extensions": [
+                {
+                    "kind": "tool",
+                    "name": "ask-clarification",
+                    "enabled": True,
+                    "source": "registry",
+                    "entrypoint": "deerflow.tools.builtins.clarification_tool:ask_clarification_tool",
+                    "description": "Ask for clarification",
+                    "risk_level": "medium",
+                    "owner": "platform",
+                }
+            ],
+        }
+    ).extensions[0]
+
+    tool = materialize_tool(extension)
+
+    result = tool.invoke(
+        {
+            "question": "Which region?",
+            "clarification_type": "missing_info",
+        }
+    )
+
+    assert result == "Clarification request processed by middleware"
+    audit_path = tmp_path / "audit" / "executions.jsonl"
+    records = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()]
+    assert len(records) == 1
+    record = records[0]
+    assert record["event"] == "extension.execution"
+    assert record["status"] == "success"
+    assert record["extension"]["kind"] == "tool"
+    assert record["extension"]["name"] == "ask-clarification"
+    assert record["extension"]["risk_level"] == "medium"
+    assert record["extension"]["owner"] == "platform"
+    assert record["input_summary"] == {
+        "type": "mapping",
+        "size": 2,
+        "keys": ["question", "clarification_type"],
+        "truncated": False,
+    }
+    assert record["output_summary"]["type"] == "string"
+    assert record["error"] is None
 
 
 def test_materialize_tool_blocks_high_risk_by_default(monkeypatch) -> None:
