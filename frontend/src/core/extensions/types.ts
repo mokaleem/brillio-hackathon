@@ -41,3 +41,12 @@ export interface ExtensionHealthResponse {
 export interface ExtensionUpdateResponse {
   extension: ExtensionDescriptor;
 }
+
+export interface ExtensionImportPreviewResponse {
+  valid: boolean;
+  count: number;
+  extensions: ExtensionDescriptor[];
+  errors: string[];
+  warnings: string[];
+  duplicates: string[];
+}

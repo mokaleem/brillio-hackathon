@@ -12,6 +12,8 @@ import { fetch as fetcher } from "@/core/api/fetcher";
 import {
   loadExtensionHealth,
   loadExtensions,
+  commitExtensionImport,
+  previewExtensionImport,
   reloadExtensions,
   updateExtensionEnabled,
   validateExtensions,
@@ -59,7 +61,9 @@ describe("loadExtensions", () => {
   });
 
   test("adds kind query when filtering", async () => {
-    mockedFetch.mockResolvedValueOnce(jsonResponse(200, { count: 0, extensions: [] }));
+    mockedFetch.mockResolvedValueOnce(
+      jsonResponse(200, { count: 0, extensions: [] }),
+    );
 
     await loadExtensions({ kind: "skill" });
 
@@ -118,13 +122,18 @@ describe("extension management api", () => {
   });
 
   test("reloadExtensions posts to the reload endpoint", async () => {
-    mockedFetch.mockResolvedValueOnce(jsonResponse(200, { count: 0, extensions: [] }));
+    mockedFetch.mockResolvedValueOnce(
+      jsonResponse(200, { count: 0, extensions: [] }),
+    );
 
     await reloadExtensions({ kind: "tool" });
 
-    expect(mockedFetch).toHaveBeenCalledWith("/api/extensions/reload?kind=tool", {
-      method: "POST",
-    });
+    expect(mockedFetch).toHaveBeenCalledWith(
+      "/api/extensions/reload?kind=tool",
+      {
+        method: "POST",
+      },
+    );
   });
 
   test("updateExtensionEnabled writes enabled state", async () => {
@@ -158,5 +167,51 @@ describe("extension management api", () => {
         body: JSON.stringify({ enabled: true }),
       },
     );
+  });
+
+  test("previewExtensionImport posts manifest JSON", async () => {
+    mockedFetch.mockResolvedValueOnce(
+      jsonResponse(200, {
+        valid: true,
+        count: 1,
+        extensions: [{ kind: "tool", name: "csv-export" }],
+        errors: [],
+        warnings: [],
+        duplicates: [],
+      }),
+    );
+
+    await expect(
+      previewExtensionImport('{"version":1}'),
+    ).resolves.toMatchObject({
+      valid: true,
+      extensions: [{ name: "csv-export" }],
+    });
+    expect(mockedFetch).toHaveBeenCalledWith("/api/extensions/import/preview", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ manifest_json: '{"version":1}' }),
+    });
+  });
+
+  test("commitExtensionImport imports selected descriptors", async () => {
+    mockedFetch.mockResolvedValueOnce(
+      jsonResponse(200, { count: 0, extensions: [] }),
+    );
+
+    await commitExtensionImport('{"version":1}', ["tool:csv-export"]);
+
+    expect(mockedFetch).toHaveBeenCalledWith("/api/extensions/import", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manifest_json: '{"version":1}',
+        selected: ["tool:csv-export"],
+      }),
+    });
   });
 });

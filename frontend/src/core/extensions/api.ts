@@ -4,6 +4,7 @@ import { getBackendBaseURL } from "@/core/config";
 import type {
   ExtensionKind,
   ExtensionHealthResponse,
+  ExtensionImportPreviewResponse,
   ExtensionUpdateResponse,
   ExtensionValidateResponse,
   ExtensionsResponse,
@@ -26,9 +27,12 @@ export async function loadExtensions(options?: {
 }
 
 export async function validateExtensions(): Promise<ExtensionValidateResponse> {
-  const response = await fetch(`${getBackendBaseURL()}/api/extensions/validate`, {
-    method: "POST",
-  });
+  const response = await fetch(
+    `${getBackendBaseURL()}/api/extensions/validate`,
+    {
+      method: "POST",
+    },
+  );
   await assertOk(response, "Failed to validate extensions");
   const data = (await response.json()) as Partial<ExtensionValidateResponse>;
   return {
@@ -55,9 +59,12 @@ export async function loadExtensionHealth(): Promise<ExtensionHealthResponse> {
 export async function reloadExtensions(options?: {
   kind?: ExtensionKind;
 }): Promise<ExtensionsResponse> {
-  return requestExtensions(buildExtensionsPath("/api/extensions/reload", options), {
-    method: "POST",
-  });
+  return requestExtensions(
+    buildExtensionsPath("/api/extensions/reload", options),
+    {
+      method: "POST",
+    },
+  );
 }
 
 export async function updateExtensionEnabled(
@@ -77,6 +84,45 @@ export async function updateExtensionEnabled(
   );
   await assertOk(response, "Failed to update extension");
   return response.json() as Promise<ExtensionUpdateResponse>;
+}
+
+export async function previewExtensionImport(
+  manifestJson: string,
+): Promise<ExtensionImportPreviewResponse> {
+  const response = await fetch(
+    `${getBackendBaseURL()}/api/extensions/import/preview`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ manifest_json: manifestJson }),
+    },
+  );
+  await assertOk(response, "Failed to preview extension import");
+  const data =
+    (await response.json()) as Partial<ExtensionImportPreviewResponse>;
+  return {
+    valid: data.valid ?? false,
+    count: data.count ?? 0,
+    extensions: data.extensions ?? [],
+    errors: data.errors ?? [],
+    warnings: data.warnings ?? [],
+    duplicates: data.duplicates ?? [],
+  };
+}
+
+export async function commitExtensionImport(
+  manifestJson: string,
+  selected: string[],
+): Promise<ExtensionsResponse> {
+  return requestExtensions("/api/extensions/import", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ manifest_json: manifestJson, selected }),
+  });
 }
 
 async function requestExtensions(

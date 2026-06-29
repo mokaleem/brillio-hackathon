@@ -6,19 +6,29 @@ import {
   CheckCircle2Icon,
   Code2Icon,
   FileTextIcon,
+  FileJsonIcon,
   PackageOpenIcon,
   RefreshCcwIcon,
   SearchIcon,
   ShieldAlertIcon,
   SparklesIcon,
+  UploadIcon,
   WrenchIcon,
   XCircleIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -29,9 +39,12 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import {
+  commitExtensionImport,
   loadExtensionHealth,
   loadExtensions,
+  previewExtensionImport,
   reloadExtensions,
   updateExtensionEnabled,
   validateExtensions,
@@ -49,6 +62,7 @@ import {
 import type {
   ExtensionDescriptor,
   ExtensionHealthResponse,
+  ExtensionImportPreviewResponse,
   ExtensionKind,
   ExtensionsResponse,
 } from "@/core/extensions/types";
@@ -83,6 +97,7 @@ export function ExtensionBrowser() {
   const [kind, setKind] = useState<ExtensionKindFilter>("all");
   const [status, setStatus] = useState<ExtensionStatusFilter>("all");
   const [query, setQuery] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
   const [pendingToggle, setPendingToggle] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
@@ -179,6 +194,10 @@ export function ExtensionBrowser() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={() => setImportOpen(true)}>
+            <UploadIcon className="size-4" />
+            Import
+          </Button>
           <Button
             variant="outline"
             onClick={() => validateMutation.mutate()}
@@ -201,6 +220,20 @@ export function ExtensionBrowser() {
           </Button>
         </div>
       </header>
+      <ExtensionImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImported={(data) => {
+          queryClient.setQueryData<ExtensionsResponse>(
+            EXTENSION_QUERY_KEY,
+            data,
+          );
+          void queryClient.invalidateQueries({
+            queryKey: EXTENSION_HEALTH_QUERY_KEY,
+          });
+          toast.success("Imported selected extensions");
+        }}
+      />
 
       <section className="grid gap-3 border-b px-6 py-4 sm:grid-cols-2 lg:grid-cols-5">
         <SummaryMetric label="Total" value={summary.total} />
@@ -315,6 +348,269 @@ function SummaryMetric({ label, value }: { label: string; value: number }) {
   );
 }
 
+function ExtensionImportDialog({
+  open,
+  onOpenChange,
+  onImported,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onImported: (data: ExtensionsResponse) => void;
+}) {
+  const [manifestJson, setManifestJson] = useState("");
+  const [registryUrl, setRegistryUrl] = useState("");
+  const [preview, setPreview] = useState<ExtensionImportPreviewResponse | null>(
+    null,
+  );
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!open) {
+      setPreview(null);
+      setSelected({});
+      setRegistryUrl("");
+    }
+  }, [open]);
+
+  const previewMutation = useMutation({
+    mutationFn: previewExtensionImport,
+    onSuccess: (result) => {
+      setPreview(result);
+      setSelected(
+        Object.fromEntries(
+          result.extensions
+            .filter(
+              (extension) =>
+                !result.duplicates.includes(extensionKey(extension)),
+            )
+            .map((extension) => [extensionKey(extension), true]),
+        ),
+      );
+      if (result.errors.length > 0) {
+        toast.error(result.errors[0]);
+      } else if (result.duplicates.length > 0) {
+        toast.warning("Preview contains duplicate extension names");
+      } else {
+        toast.success(`Previewed ${result.count} extension entries`);
+      }
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : String(error));
+    },
+  });
+
+  const importMutation = useMutation({
+    mutationFn: (keys: string[]) => commitExtensionImport(manifestJson, keys),
+    onSuccess: (data) => {
+      onImported(data);
+      onOpenChange(false);
+      setManifestJson("");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : String(error));
+    },
+  });
+
+  const selectedKeys = useMemo(
+    () =>
+      Object.entries(selected)
+        .filter(([, enabled]) => enabled)
+        .map(([key]) => key),
+    [selected],
+  );
+
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) {
+      return;
+    }
+    setManifestJson(await file.text());
+    setPreview(null);
+  };
+
+  const handleFetchUrl = async () => {
+    if (!registryUrl.trim()) {
+      return;
+    }
+    try {
+      const response = await globalThis.fetch(registryUrl.trim());
+      if (!response.ok) {
+        throw new Error(`Registry URL returned ${response.status}`);
+      }
+      setManifestJson(await response.text());
+      setPreview(null);
+      toast.success("Registry JSON loaded");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const canImport =
+    Boolean(preview) &&
+    (preview?.errors.length ?? 0) === 0 &&
+    selectedKeys.length > 0 &&
+    !importMutation.isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[85dvh] max-w-3xl overflow-hidden p-0">
+        <DialogHeader className="border-b px-5 py-4">
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <FileJsonIcon className="size-4" />
+            Import Extension Registry
+          </DialogTitle>
+          <DialogDescription>
+            Load a registry JSON file, preview descriptors, then import selected
+            capabilities into the local generated registry.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="min-h-0 overflow-y-auto px-5 py-4">
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <label className="text-sm font-medium" htmlFor="registry-url">
+                Registry URL
+              </label>
+              <div className="flex gap-2">
+                <Input
+                  id="registry-url"
+                  value={registryUrl}
+                  onChange={(event) => setRegistryUrl(event.target.value)}
+                  placeholder="https://example.com/extensions.json"
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => void handleFetchUrl()}
+                  disabled={!registryUrl.trim()}
+                >
+                  Fetch
+                </Button>
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <label className="text-sm font-medium" htmlFor="registry-json">
+                Registry JSON
+              </label>
+              <Textarea
+                id="registry-json"
+                value={manifestJson}
+                onChange={(event) => {
+                  setManifestJson(event.target.value);
+                  setPreview(null);
+                }}
+                className="min-h-48 font-mono text-xs"
+                placeholder='{"version":1,"extensions":[]}'
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button asChild variant="outline" size="sm">
+                  <label>
+                    <UploadIcon className="size-4" />
+                    Upload JSON
+                    <input
+                      className="sr-only"
+                      type="file"
+                      accept="application/json,.json"
+                      onChange={(event) => void handleFileChange(event)}
+                    />
+                  </label>
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => previewMutation.mutate(manifestJson)}
+                  disabled={!manifestJson.trim() || previewMutation.isPending}
+                >
+                  <CheckCircle2Icon className="size-4" />
+                  Preview
+                </Button>
+              </div>
+            </div>
+
+            {preview && (
+              <div className="rounded-lg border">
+                <div className="bg-muted/50 flex flex-wrap items-center gap-2 border-b px-3 py-2">
+                  <Badge
+                    variant={preview.errors.length ? "destructive" : "outline"}
+                  >
+                    {preview.count} entries
+                  </Badge>
+                  {preview.duplicates.length > 0 && (
+                    <Badge variant="secondary">
+                      {preview.duplicates.length} duplicates
+                    </Badge>
+                  )}
+                </div>
+                {preview.errors.length > 0 || preview.warnings.length > 0 ? (
+                  <div className="grid gap-2 border-b px-3 py-3 text-xs">
+                    {preview.errors.map((message) => (
+                      <HealthMessage
+                        key={message}
+                        tone="error"
+                        message={message}
+                      />
+                    ))}
+                    {preview.warnings.map((message) => (
+                      <HealthMessage
+                        key={message}
+                        tone="warning"
+                        message={message}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+                <ul className="max-h-64 divide-y overflow-y-auto">
+                  {preview.extensions.map((extension) => {
+                    const key = extensionKey(extension);
+                    const duplicate = preview.duplicates.includes(key);
+                    return (
+                      <li
+                        key={key}
+                        className="grid gap-3 px-3 py-3 sm:grid-cols-[1fr_auto] sm:items-center"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium">
+                            {extension.display_name ?? extension.name}
+                          </div>
+                          <div className="text-muted-foreground mt-1 flex flex-wrap gap-2 text-xs">
+                            <span>{formatExtensionKind(extension.kind)}</span>
+                            <span className="font-mono">{extension.name}</span>
+                            {duplicate && <span>Already configured</span>}
+                          </div>
+                        </div>
+                        <Switch
+                          checked={selected[key] ?? false}
+                          disabled={duplicate}
+                          onCheckedChange={(enabled) =>
+                            setSelected((current) => ({
+                              ...current,
+                              [key]: enabled,
+                            }))
+                          }
+                          aria-label={`Import ${extension.name}`}
+                        />
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+        <DialogFooter className="border-t px-5 py-4">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            disabled={!canImport}
+            onClick={() => importMutation.mutate(selectedKeys)}
+          >
+            Import Selected
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ExtensionHealthPanel({
   health,
   isLoading,
@@ -382,7 +678,11 @@ function ExtensionHealthPanel({
               <span className="text-sm font-medium">{statusLabel}</span>
               <Badge variant="outline">{health.count} entries</Badge>
               {issueCount > 0 && (
-                <Badge variant={health.errors.length > 0 ? "destructive" : "secondary"}>
+                <Badge
+                  variant={
+                    health.errors.length > 0 ? "destructive" : "secondary"
+                  }
+                >
                   {issueCount} issue{issueCount === 1 ? "" : "s"}
                 </Badge>
               )}
@@ -390,7 +690,10 @@ function ExtensionHealthPanel({
             <div className="text-muted-foreground mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
               {health.manifests.length > 0 ? (
                 health.manifests.map((manifest) => (
-                  <span key={manifest} className="max-w-full truncate font-mono">
+                  <span
+                    key={manifest}
+                    className="max-w-full truncate font-mono"
+                  >
                     {manifest}
                   </span>
                 ))
@@ -480,7 +783,7 @@ function ExtensionRow({
           <div className="bg-muted/40 text-muted-foreground mt-3 space-y-1 rounded-md border px-3 py-2 text-xs">
             {promptTemplate && (
               <div className="min-w-0">
-                <span className="font-medium text-foreground">
+                <span className="text-foreground font-medium">
                   Prompt template:
                 </span>{" "}
                 <span className="font-mono break-words">{promptTemplate}</span>
@@ -488,7 +791,7 @@ function ExtensionRow({
             )}
             {examplePrompts.length > 0 && (
               <div className="min-w-0">
-                <span className="font-medium text-foreground">
+                <span className="text-foreground font-medium">
                   Example prompt:
                 </span>{" "}
                 <span className="break-words">{examplePrompts[0]}</span>

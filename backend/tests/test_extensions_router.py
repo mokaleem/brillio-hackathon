@@ -237,3 +237,122 @@ def test_extensions_update_enabled_writes_manifest(monkeypatch, tmp_path: Path) 
     with TestClient(_make_app()) as client:
         list_response = client.get("/api/extensions?kind=skill")
     assert list_response.json()["extensions"][0]["enabled"] is True
+
+
+def test_extensions_import_preview_returns_external_manifest(monkeypatch, tmp_path: Path) -> None:
+    base_manifest = tmp_path / "registries" / "internal_extensions.example.json"
+    base_manifest.parent.mkdir()
+    base_manifest.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
+    monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+
+    manifest_json = """
+    {
+      "version": 1,
+      "extensions": [
+        {
+          "kind": "tool",
+          "name": "forecast-export",
+          "enabled": false,
+          "source": "registry",
+          "entrypoint": "company_tools.forecast:export"
+        }
+      ]
+    }
+    """
+
+    with TestClient(_make_admin_app()) as client:
+        response = client.post("/api/extensions/import/preview", json={"manifest_json": manifest_json})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["valid"] is True
+    assert payload["count"] == 1
+    assert payload["extensions"][0]["name"] == "forecast-export"
+
+
+def test_extensions_import_preview_reports_duplicates(monkeypatch, tmp_path: Path) -> None:
+    base_manifest = tmp_path / "registries" / "internal_extensions.example.json"
+    base_manifest.parent.mkdir()
+    base_manifest.write_text(
+        """
+        {
+          "version": 1,
+          "extensions": [
+            {
+              "kind": "tool",
+              "name": "forecast-export",
+              "enabled": true,
+              "source": "local",
+              "entrypoint": "company_tools.forecast:export"
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+
+    manifest_json = """
+    {
+      "version": 1,
+      "extensions": [
+        {
+          "kind": "tool",
+          "name": "forecast-export",
+          "enabled": true,
+          "source": "registry",
+          "entrypoint": "company_tools.forecast:export"
+        }
+      ]
+    }
+    """
+
+    with TestClient(_make_admin_app()) as client:
+        response = client.post("/api/extensions/import/preview", json={"manifest_json": manifest_json})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["valid"] is False
+    assert payload["duplicates"] == ["tool:forecast-export"]
+
+
+def test_extensions_import_selected_descriptors(monkeypatch, tmp_path: Path) -> None:
+    base_manifest = tmp_path / "registries" / "internal_extensions.example.json"
+    base_manifest.parent.mkdir()
+    base_manifest.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
+    monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+
+    manifest_json = """
+    {
+      "version": 1,
+      "extensions": [
+        {
+          "kind": "tool",
+          "name": "forecast-export",
+          "enabled": false,
+          "source": "registry",
+          "entrypoint": "company_tools.forecast:export"
+        },
+        {
+          "kind": "skill",
+          "name": "forecast-review",
+          "enabled": false,
+          "source": "registry",
+          "entrypoint": "internal_skills/forecast-review"
+        }
+      ]
+    }
+    """
+
+    with TestClient(_make_admin_app()) as client:
+        response = client.post(
+            "/api/extensions/import",
+            json={"manifest_json": manifest_json, "selected": ["tool:forecast-export"]},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [extension["name"] for extension in payload["extensions"]] == ["forecast-export"]
+    assert payload["extensions"][0]["enabled"] is True
+    imported_manifest = tmp_path / "registries" / "imported_extensions.json"
+    assert imported_manifest.exists()

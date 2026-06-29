@@ -27,6 +27,7 @@ venv/
 config.yaml
 mcp_config.json
 extensions_config.json
+registries/imported_extensions.json
 
 # IDE
 .idea/
