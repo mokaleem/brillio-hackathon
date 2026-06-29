@@ -10,6 +10,10 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import {
+  formatArtifactSummary,
+  summarizeArtifactFiles,
+} from "@/core/artifacts/catalog";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
 
@@ -96,6 +100,10 @@ const ChatBox: React.FC<{ children: React.ReactNode; threadId: string }> = ({
   const resizableIdBase = useMemo(() => {
     return pathname.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
   }, [pathname]);
+  const artifactSummary = useMemo(
+    () => summarizeArtifactFiles(artifacts),
+    [artifacts],
+  );
 
   useEffect(() => {
     if (layoutRef.current) {
@@ -164,8 +172,11 @@ const ChatBox: React.FC<{ children: React.ReactNode; threadId: string }> = ({
                 />
               ) : (
                 <div className="flex size-full max-w-(--container-width-sm) flex-col justify-center p-4 pt-8">
-                  <header className="shrink-0">
-                    <h2 className="text-lg font-medium">Artifacts</h2>
+                  <header className="shrink-0 space-y-1">
+                    <h2 className="text-lg font-medium">Artifact Center</h2>
+                    <p className="text-muted-foreground text-sm">
+                      {formatArtifactSummary(artifactSummary)}
+                    </p>
                   </header>
                   <main className="min-h-0 grow">
                     <ArtifactFileList
