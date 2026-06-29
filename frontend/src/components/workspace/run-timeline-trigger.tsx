@@ -20,10 +20,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
   RunTimelineEvent,
   RunTimelineKind,
 } from "@/core/threads/timeline";
+import { getCapabilityAuditTimelineEvents } from "@/core/threads/timeline";
 import { cn } from "@/lib/utils";
 
 const KIND_ICON: Record<RunTimelineKind, typeof RouteIcon> = {
@@ -44,6 +46,14 @@ export function RunTimelineTrigger({
 }) {
   const [open, setOpen] = useState(false);
   const recentEvents = useMemo(() => events.slice(-80).reverse(), [events]);
+  const auditEvents = useMemo(
+    () => getCapabilityAuditTimelineEvents(events),
+    [events],
+  );
+  const recentAuditEvents = useMemo(
+    () => auditEvents.slice(-80).reverse(),
+    [auditEvents],
+  );
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -75,27 +85,78 @@ export function RunTimelineTrigger({
             </Badge>
           </div>
         </DialogHeader>
-        <div className="max-h-[62dvh] overflow-y-auto px-5 py-4">
-          {recentEvents.length === 0 ? (
-            <div className="flex min-h-48 flex-col items-center justify-center gap-2 rounded-lg border border-dashed text-center">
-              <Clock3Icon className="text-muted-foreground size-7" />
-              <div>
-                <p className="text-sm font-medium">No run events yet</p>
-                <p className="text-muted-foreground mt-1 max-w-sm text-xs">
-                  Send a message to see model, tool, and orchestration activity.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <ol className="before:bg-border relative space-y-3 before:absolute before:top-2 before:bottom-2 before:left-4 before:w-px">
-              {recentEvents.map((event) => (
-                <TimelineRow key={event.id} event={event} />
-              ))}
-            </ol>
-          )}
-        </div>
+        <Tabs defaultValue="all" className="min-h-0 gap-0">
+          <div className="border-b px-5 py-3">
+            <TabsList>
+              <TabsTrigger value="all">
+                All
+                <span className="text-muted-foreground font-mono text-[10px]">
+                  {events.length}
+                </span>
+              </TabsTrigger>
+              <TabsTrigger value="audit">
+                Audit
+                <span className="text-muted-foreground font-mono text-[10px]">
+                  {auditEvents.length}
+                </span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
+          <TabsContent value="all" className="min-h-0">
+            <TimelineList
+              events={recentEvents}
+              emptyIcon="timeline"
+              emptyTitle="No run events yet"
+              emptyDescription="Send a message to see model, tool, and orchestration activity."
+            />
+          </TabsContent>
+          <TabsContent value="audit" className="min-h-0">
+            <TimelineList
+              events={recentAuditEvents}
+              emptyIcon="audit"
+              emptyTitle="No capability audit events"
+              emptyDescription="Capability execution start, finish, and failure rows appear here."
+            />
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function TimelineList({
+  events,
+  emptyIcon,
+  emptyTitle,
+  emptyDescription,
+}: {
+  events: RunTimelineEvent[];
+  emptyIcon: "timeline" | "audit";
+  emptyTitle: string;
+  emptyDescription: string;
+}) {
+  const EmptyIcon = emptyIcon === "audit" ? ShieldCheckIcon : Clock3Icon;
+
+  return (
+    <div className="max-h-[55dvh] overflow-y-auto px-5 py-4">
+      {events.length === 0 ? (
+        <div className="flex min-h-48 flex-col items-center justify-center gap-2 rounded-lg border border-dashed text-center">
+          <EmptyIcon className="text-muted-foreground size-7" />
+          <div>
+            <p className="text-sm font-medium">{emptyTitle}</p>
+            <p className="text-muted-foreground mt-1 max-w-sm text-xs">
+              {emptyDescription}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <ol className="before:bg-border relative space-y-3 before:absolute before:top-2 before:bottom-2 before:left-4 before:w-px">
+          {events.map((event) => (
+            <TimelineRow key={event.id} event={event} />
+          ))}
+        </ol>
+      )}
+    </div>
   );
 }
 

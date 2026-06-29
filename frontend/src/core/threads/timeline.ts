@@ -32,6 +32,12 @@ export function readRunTimelineEvents(value: unknown): RunTimelineEvent[] {
   return value.filter(isRunTimelineEvent);
 }
 
+export function getCapabilityAuditTimelineEvents(
+  events: RunTimelineEvent[],
+): RunTimelineEvent[] {
+  return events.filter((event) => event.kind === "audit");
+}
+
 export function buildRunLifecycleEvent(
   phase: Extract<RunTimelinePhase, "start" | "end">,
   index: number,

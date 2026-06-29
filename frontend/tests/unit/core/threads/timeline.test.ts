@@ -3,6 +3,7 @@ import { describe, expect, test } from "@rstest/core";
 import {
   buildRunLifecycleEvent,
   compactRunTimelineEvents,
+  getCapabilityAuditTimelineEvents,
   normalizeCapabilityAuditTimelineEvent,
   normalizeCustomTimelineEvent,
   normalizeLangChainTimelineEvent,
@@ -105,5 +106,19 @@ describe("run timeline helpers", () => {
       readRunTimelineEvents([first, { id: "bad", kind: "run" }, second, null]),
     ).toEqual([first, second]);
     expect(compactRunTimelineEvents([first, second], 1)).toEqual([second]);
+  });
+
+  test("filters capability audit events", () => {
+    const run = buildRunLifecycleEvent("start", 0);
+    const audit = normalizeCapabilityAuditTimelineEvent(
+      {
+        event: "on_tool_end",
+        name: "html_report",
+        data: { output: "ok" },
+      },
+      1,
+    )!;
+
+    expect(getCapabilityAuditTimelineEvents([run, audit])).toEqual([audit]);
   });
 });
