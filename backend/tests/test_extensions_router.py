@@ -248,6 +248,10 @@ def test_extensions_import_preview_returns_external_manifest(monkeypatch, tmp_pa
     manifest_json = """
     {
       "version": 1,
+      "metadata": {
+        "registry": "forecast-demo",
+        "url": "https://registry.example.com/forecast.json"
+      },
       "extensions": [
         {
           "kind": "tool",
@@ -300,6 +304,10 @@ def test_extensions_import_preview_rejects_too_many_descriptors(monkeypatch, tmp
     manifest_json = """
     {
       "version": 1,
+      "metadata": {
+        "registry": "forecast-demo",
+        "url": "https://registry.example.com/forecast.json"
+      },
       "extensions": [
         {
           "kind": "tool",
@@ -413,6 +421,10 @@ def test_extensions_import_selected_descriptors(monkeypatch, tmp_path: Path) -> 
     manifest_json = """
     {
       "version": 1,
+      "metadata": {
+        "registry": "forecast-demo",
+        "url": "https://registry.example.com/forecast.json"
+      },
       "extensions": [
         {
           "kind": "tool",
@@ -442,8 +454,17 @@ def test_extensions_import_selected_descriptors(monkeypatch, tmp_path: Path) -> 
     payload = response.json()
     assert [extension["name"] for extension in payload["extensions"]] == ["forecast-export"]
     assert payload["extensions"][0]["enabled"] is True
+    provenance = payload["extensions"][0]["provenance"]
+    assert provenance["registry_version"] == 1
+    assert provenance["source_name"] == "forecast-demo"
+    assert provenance["source_url"] == "https://registry.example.com/forecast.json"
+    assert len(provenance["descriptor_hash"]) == 64
+    assert provenance["imported_at"].endswith("Z")
     imported_manifest = tmp_path / "registries" / "imported_extensions.json"
     assert imported_manifest.exists()
+    persisted = imported_manifest.read_text(encoding="utf-8")
+    assert '"provenance"' in persisted
+    assert provenance["descriptor_hash"] in persisted
 
 
 def test_extensions_import_blocks_dangerous_selected_entrypoint(monkeypatch, tmp_path: Path) -> None:

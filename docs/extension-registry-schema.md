@@ -65,7 +65,8 @@ Unknown fields are rejected. Extension names must be lowercase hyphen-case with 
   "risk_level": "low",
   "display_name": "HTML Report",
   "icon": null,
-  "category": "Reporting"
+  "category": "Reporting",
+  "provenance": null
 }
 ```
 
@@ -86,6 +87,18 @@ Unknown fields are rejected. Extension names must be lowercase hyphen-case with 
 | `display_name` | string or null | No | Friendly UI label. |
 | `icon` | string or null | No | Reserved for future UI icon hints. |
 | `category` | string or null | No | UI grouping or tool config group fallback. |
+| `provenance` | object or null | No | Filled by the gateway for imported descriptors. Contains import timestamp, registry version, descriptor hash, and source URL/path/name. |
+
+Imported descriptors are stamped with:
+
+| Provenance field | Type | Notes |
+| --- | --- | --- |
+| `imported_at` | string | UTC ISO timestamp when the gateway imported the descriptor. |
+| `descriptor_hash` | string | SHA-256 hash of the imported descriptor before provenance was attached. |
+| `registry_version` | integer | Source manifest `version`. |
+| `source_name` | string or null | Source registry name from manifest metadata or import entry. |
+| `source_path` | string or null | Source file/directory path when available. |
+| `source_url` | string or null | Source registry URL when available. |
 
 ## Kind-Specific Notes
 

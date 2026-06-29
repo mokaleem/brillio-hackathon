@@ -20,6 +20,14 @@ type MockExtension = {
   display_name?: string | null;
   icon?: string | null;
   category?: string | null;
+  provenance?: {
+    imported_at: string;
+    descriptor_hash: string;
+    registry_version: number;
+    source_name?: string | null;
+    source_path?: string | null;
+    source_url?: string | null;
+  } | null;
 };
 
 const demoExtensions: MockExtension[] = [
@@ -138,6 +146,14 @@ const importedExtension: MockExtension = {
   owner: "finance-demo",
   risk_level: "medium",
   display_name: "Forecast Export",
+  provenance: {
+    imported_at: "2026-06-29T16:00:00Z",
+    descriptor_hash:
+      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    registry_version: 1,
+    source_name: "finance-demo",
+    source_url: "https://registry.example.com/forecast.json",
+  },
 };
 
 const blockedExtension: MockExtension = {
@@ -334,6 +350,8 @@ test.describe("Hackathon demo flow", () => {
     await expect(
       page.getByText("Forecast Export", { exact: true }),
     ).toBeVisible();
+    await expect(page.getByText(/from finance-demo/)).toBeVisible();
+    await expect(page.getByText(/0123456789ab/)).toBeVisible();
 
     await page.goto("/workspace/chats/new");
 

@@ -16,6 +16,16 @@ export interface ExtensionDescriptor {
   display_name?: string | null;
   icon?: string | null;
   category?: string | null;
+  provenance?: ExtensionProvenance | null;
+}
+
+export interface ExtensionProvenance {
+  imported_at: string;
+  descriptor_hash: string;
+  registry_version: number;
+  source_name?: string | null;
+  source_path?: string | null;
+  source_url?: string | null;
 }
 
 export interface ExtensionsResponse {

@@ -6,6 +6,7 @@ import {
   CheckCircle2Icon,
   Code2Icon,
   CopyIcon,
+  FingerprintIcon,
   FileTextIcon,
   FileJsonIcon,
   PackageOpenIcon,
@@ -939,6 +940,23 @@ function ExtensionRow({
             </span>
           </div>
         )}
+        {extension.provenance && (
+          <div className="text-muted-foreground mt-2 flex min-w-0 items-start gap-1.5 text-xs">
+            <FingerprintIcon className="mt-0.5 size-3.5 shrink-0" />
+            <div className="min-w-0">
+              <div className="truncate">
+                Imported {formatImportedAt(extension.provenance.imported_at)}
+                {formatProvenanceSource(extension)
+                  ? ` from ${formatProvenanceSource(extension)}`
+                  : ""}
+              </div>
+              <div className="truncate font-mono">
+                v{extension.provenance.registry_version} ·{" "}
+                {extension.provenance.descriptor_hash.slice(0, 12)}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div>
@@ -1034,6 +1052,31 @@ function ExtensionBrowserEmpty() {
 
 function extensionKey(extension: ExtensionDescriptor) {
   return `${extension.kind}:${extension.name}`;
+}
+
+function formatImportedAt(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatProvenanceSource(extension: ExtensionDescriptor) {
+  const provenance = extension.provenance;
+  if (!provenance) {
+    return null;
+  }
+  return (
+    provenance.source_name ??
+    provenance.source_url ??
+    provenance.source_path ??
+    extension.source
+  );
 }
 
 function isExternalSource(extension: ExtensionDescriptor) {

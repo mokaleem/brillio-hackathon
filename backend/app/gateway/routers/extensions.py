@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +16,7 @@ from deerflow.extensions import (
     ExtensionDescriptor,
     ExtensionKind,
     ExtensionManifest,
+    ExtensionProvenance,
     ExtensionSource,
     load_extension_catalog,
     validate_extension_registry,
@@ -55,6 +58,7 @@ class ExtensionResponse(BaseModel):
     display_name: str | None = None
     icon: str | None = None
     category: str | None = None
+    provenance: ExtensionProvenance | None = None
 
 
 class ExtensionsListResponse(BaseModel):
@@ -369,7 +373,7 @@ def _append_imported_extensions(repo_root: Path, *, manifest: ExtensionManifest,
     for extension in extensions:
         key = _extension_key(extension)
         if key not in imported_keys:
-            next_extensions.append(extension)
+            next_extensions.append(_with_import_provenance(extension, manifest=manifest))
             imported_keys.add(key)
 
     import_keys = {(item.kind, item.name) for item in imported_manifest.imports}
@@ -384,6 +388,44 @@ def _append_imported_extensions(repo_root: Path, *, manifest: ExtensionManifest,
     with path.open("w", encoding="utf-8") as handle:
         json.dump(output.model_dump(mode="json", exclude_none=True), handle, indent=2)
         handle.write("\n")
+
+
+def _with_import_provenance(extension: ExtensionDescriptor, *, manifest: ExtensionManifest) -> ExtensionDescriptor:
+    source_import = _select_provenance_source(manifest)
+    provenance = ExtensionProvenance(
+        imported_at=datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        descriptor_hash=_descriptor_hash(extension),
+        registry_version=manifest.version,
+        source_name=source_import.get("name"),
+        source_path=source_import.get("path"),
+        source_url=source_import.get("url"),
+    )
+    return extension.model_copy(update={"provenance": provenance})
+
+
+def _select_provenance_source(manifest: ExtensionManifest) -> dict[str, str | None]:
+    registry_name = manifest.metadata.get("registry") or manifest.metadata.get("name")
+    source_url = manifest.metadata.get("url") or manifest.metadata.get("source_url")
+    source_path = manifest.metadata.get("path") or manifest.metadata.get("source_path")
+    if any(isinstance(value, str) and value.strip() for value in (registry_name, source_url, source_path)):
+        return {
+            "name": registry_name.strip() if isinstance(registry_name, str) else None,
+            "url": source_url.strip() if isinstance(source_url, str) else None,
+            "path": source_path.strip() if isinstance(source_path, str) else None,
+        }
+
+    for item in manifest.imports:
+        if item.type == "registry" and item.url:
+            return {"name": item.name, "url": item.url, "path": None}
+        if item.path:
+            return {"name": item.name, "url": None, "path": item.path}
+    return {"name": None, "url": None, "path": None}
+
+
+def _descriptor_hash(extension: ExtensionDescriptor) -> str:
+    payload = extension.model_dump(mode="json", exclude_none=True, exclude={"provenance"})
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _with_imported_manifest(paths: list[Path], repo_root: Path) -> list[Path]:
