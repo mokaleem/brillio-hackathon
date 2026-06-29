@@ -104,6 +104,12 @@ export function extensionDisplayName(extension: ExtensionDescriptor): string {
   return extension.display_name ?? extension.name;
 }
 
+export function requiresCapabilityApproval(
+  extension: ExtensionDescriptor,
+): boolean {
+  return extension.risk_level === "high";
+}
+
 export function buildExtensionPrompt(extension: ExtensionDescriptor): string {
   const promptTemplate = getExtensionPromptTemplate(extension);
   if (promptTemplate) {
@@ -204,6 +210,7 @@ function metadataStringList(
     return [];
   }
   return value.filter(
-    (item): item is string => typeof item === "string" && item.trim().length > 0,
+    (item): item is string =>
+      typeof item === "string" && item.trim().length > 0,
   );
 }

@@ -9,6 +9,7 @@ import {
   formatExtensionKind,
   getExtensionExamplePrompts,
   getExtensionPromptTemplate,
+  requiresCapabilityApproval,
   summarizeExtensions,
 } from "@/core/extensions/browser";
 import type { ExtensionDescriptor } from "@/core/extensions/types";
@@ -123,6 +124,14 @@ describe("extension browser helpers", () => {
     );
   });
 
+  test("requires approval for high-risk enabled capabilities", () => {
+    expect(requiresCapabilityApproval(extensions[1]!)).toBe(true);
+    expect(requiresCapabilityApproval(extensions[0]!)).toBe(false);
+    expect(
+      requiresCapabilityApproval({ ...extensions[1]!, risk_level: null }),
+    ).toBe(false);
+  });
+
   test("uses first example prompt when no prompt template exists", () => {
     const extension: ExtensionDescriptor = {
       ...extensions[1]!,
@@ -158,15 +167,21 @@ describe("extension browser helpers", () => {
   });
 
   test("falls back to kind-specific prompts", () => {
-    expect(buildExtensionPrompt(extensions[0]!)).toBe("Ask Finance Analyst to ");
+    expect(buildExtensionPrompt(extensions[0]!)).toBe(
+      "Ask Finance Analyst to ",
+    );
     expect(buildExtensionPrompt(extensions[2]!)).toBe("/quarterly-report ");
-    expect(buildExtensionPrompt(extensions[1]!)).toBe("Use market-data-tool to ");
+    expect(buildExtensionPrompt(extensions[1]!)).toBe(
+      "Use market-data-tool to ",
+    );
   });
 
   test("builds deterministic hackathon demo prompt from enabled capabilities", () => {
     const prompt = buildDemoConversationPrompt(extensions);
 
-    expect(prompt).toContain("Run the Brillio hackathon internal assistant demo");
+    expect(prompt).toContain(
+      "Run the Brillio hackathon internal assistant demo",
+    );
     expect(prompt).toContain("Agent: Finance Analyst (finance-analyst)");
     expect(prompt).toContain("Skill: quarterly-report (quarterly-report)");
     expect(prompt).not.toContain("market-data-tool (market-data-tool)");

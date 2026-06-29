@@ -396,4 +396,34 @@ test.describe("Hackathon demo flow", () => {
       page.getByRole("button", { name: /Import Selected/i }),
     ).toBeDisabled();
   });
+
+  test("requires approval before inserting high-risk chat capability", async ({
+    page,
+  }) => {
+    await page.goto("/workspace/chats/new");
+
+    const textarea = page.getByPlaceholder(/how can i assist you/i);
+    await expect(textarea).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: /Capabilities/i }).click();
+    await page.getByText("Python Function", { exact: true }).click();
+
+    await expect(
+      page.getByRole("heading", { name: "Approve high-risk capability" }),
+    ).toBeVisible();
+    await expect(page.getByText("Python Function").last()).toBeVisible();
+    await expect(textarea).toHaveValue("");
+
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Approve high-risk capability" }),
+    ).toBeHidden();
+    await expect(textarea).toHaveValue("");
+
+    await page.getByRole("button", { name: /Capabilities/i }).click();
+    await page.getByText("Python Function", { exact: true }).click();
+    await page.getByRole("button", { name: "Approve and insert" }).click();
+
+    await expect(textarea).toHaveValue(/Use Python Function to /);
+  });
 });
