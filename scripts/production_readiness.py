@@ -33,6 +33,7 @@ def run_readiness_checks(project_root: Path = REPO_ROOT) -> list[CheckResult]:
     results.append(_check_generated_registry_gitignored(root))
     results.append(_check_frontend_env_example(root))
     results.append(_check_demo_docs(root))
+    results.append(_check_demo_deploy_bundle(root))
     return results
 
 
@@ -231,6 +232,56 @@ def _check_demo_docs(root: Path) -> CheckResult:
         "demo docs",
         not missing_phrases,
         "schema, demo guide, and split UI guide present" if not missing_phrases else "schema missing: " + ", ".join(missing_phrases),
+    )
+
+
+def _check_demo_deploy_bundle(root: Path) -> CheckResult:
+    compose = root / "docker" / "docker-compose.hackathon-demo.yaml"
+    env_example = root / "docker" / "hackathon-demo.env.example"
+    smoke = root / "scripts" / "hackathon_demo_deploy_smoke.py"
+    split_ui = root / "docs" / "split-ui-deployment.md"
+    gitignore = root / ".gitignore"
+    required = [compose, env_example, smoke, split_ui, gitignore]
+    missing = [path.relative_to(root).as_posix() for path in required if not path.is_file()]
+    if missing:
+        return CheckResult("demo deploy bundle", False, "missing: " + ", ".join(missing))
+
+    compose_text = compose.read_text(encoding="utf-8")
+    env_text = env_example.read_text(encoding="utf-8")
+    docs_text = split_ui.read_text(encoding="utf-8")
+    gitignore_text = gitignore.read_text(encoding="utf-8")
+    required_compose_phrases = [
+        "frontend:",
+        "gateway:",
+        "DEER_FLOW_INTERNAL_GATEWAY_BASE_URL=http://gateway:8001",
+        "DEERFLOW_EXTENSION_MANIFESTS=${DEERFLOW_EXTENSION_MANIFESTS:-registries/demo_extensions.json}",
+        "DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS=${DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS:-low,medium}",
+        "../internal_tools:/app/internal_tools:ro",
+    ]
+    required_env_phrases = [
+        "HACKATHON_FRONTEND_PORT=3000",
+        "HACKATHON_GATEWAY_PORT=8001",
+        "OPENAI_API_KEY=",
+    ]
+    required_docs_phrases = [
+        "Hackathon Split Demo Bundle",
+        "docker-compose.hackathon-demo.yaml",
+        "hackathon_demo_deploy_smoke.py",
+    ]
+    required_gitignore_phrases = [
+        "docker/hackathon-demo.env",
+    ]
+    missing_compose = [phrase for phrase in required_compose_phrases if phrase not in compose_text]
+    missing_env = [phrase for phrase in required_env_phrases if phrase not in env_text]
+    missing_docs = [phrase for phrase in required_docs_phrases if phrase not in docs_text]
+    missing_gitignore = [phrase for phrase in required_gitignore_phrases if phrase not in gitignore_text]
+    missing_all = [*missing_compose, *missing_env, *missing_docs, *missing_gitignore]
+    return CheckResult(
+        "demo deploy bundle",
+        not missing_all,
+        "split demo compose, env example, and smoke command are present"
+        if not missing_all
+        else "missing: " + ", ".join(missing_all[:5]),
     )
 
 

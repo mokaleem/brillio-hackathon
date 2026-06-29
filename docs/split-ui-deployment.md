@@ -211,6 +211,48 @@ cd frontend
 pnpm test:e2e tests/e2e/hackathon-demo.spec.ts --project=chromium
 ```
 
+## Hackathon Split Demo Bundle
+
+Use the split demo bundle when you want a production-like local deployment
+without the reverse proxy. It starts only the Next.js UI and FastAPI Gateway,
+keeps the Gateway as the harness boundary, and mounts the internal capability
+directories plus `registries/demo_extensions.json` into the runtime container.
+
+Create a local env file:
+
+```bash
+cp docker/hackathon-demo.env.example docker/hackathon-demo.env
+```
+
+Set `OPENAI_API_KEY` in `docker/hackathon-demo.env` for real model calls. The
+checked-in defaults keep high-risk registry extensions disabled and allow only
+the demo Python function entrypoint.
+
+Validate the bundle before a judge demo:
+
+```bash
+cd backend
+uv run python ../scripts/hackathon_demo_deploy_smoke.py
+```
+
+If Docker is unavailable in CI, run the static version:
+
+```bash
+cd backend
+uv run python ../scripts/hackathon_demo_deploy_smoke.py --skip-compose
+```
+
+Start the split demo:
+
+```bash
+docker compose -p deer-flow-demo \
+  --env-file docker/hackathon-demo.env \
+  -f docker/docker-compose.hackathon-demo.yaml up --build
+```
+
+Open the UI at `http://localhost:3000`. Gateway API docs are available at
+`http://localhost:8001/api/docs` when `GATEWAY_ENABLE_DOCS=true`.
+
 ## Troubleshooting
 
 If the UI loads but API calls fail, check whether the deployment is using
