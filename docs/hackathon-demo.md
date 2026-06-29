@@ -14,6 +14,8 @@ The key proof points are:
 - Live run trace and capability execution audit rows surfaced in the UI and persisted to thread state for refresh/export.
 - Artifact tools for HTML, CSV, PDF, plus allowlisted Python function execution.
 
+Registry schema reference: `docs/extension-registry-schema.md`
+
 ## Setup
 
 Run from the repository root:
