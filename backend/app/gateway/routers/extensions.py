@@ -6,7 +6,7 @@ import os
 import re
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, ValidationError
@@ -93,6 +93,14 @@ class ExtensionImportPreviewRequest(BaseModel):
     manifest_json: str
 
 
+class ExtensionImportPreviewChange(BaseModel):
+    key: str
+    action: Literal["add", "conflict"]
+    extension: ExtensionResponse
+    existing: ExtensionResponse | None = None
+    reason: str | None = None
+
+
 class ExtensionImportPreviewResponse(BaseModel):
     valid: bool
     count: int
@@ -100,6 +108,7 @@ class ExtensionImportPreviewResponse(BaseModel):
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     duplicates: list[str] = Field(default_factory=list)
+    changes: list[ExtensionImportPreviewChange] = Field(default_factory=list)
 
 
 class ExtensionImportRequest(BaseModel):
@@ -171,7 +180,8 @@ async def preview_extension_import(request: Request, body: ExtensionImportPrevie
         return ExtensionImportPreviewResponse(valid=False, count=0, errors=errors)
     safety_errors, safety_warnings = _import_safety_messages(manifest.extensions)
     errors.extend(safety_errors)
-    duplicates = _duplicate_extension_keys(manifest.extensions, repo_root=repo_root)
+    changes = _preview_import_changes(manifest.extensions, repo_root=repo_root)
+    duplicates = [change.key for change in changes if change.action == "conflict"]
     warnings = [
         *safety_warnings,
         *[f"Duplicate extension already configured: {key}" for key in duplicates],
@@ -183,6 +193,7 @@ async def preview_extension_import(request: Request, body: ExtensionImportPrevie
         errors=errors,
         warnings=warnings,
         duplicates=duplicates,
+        changes=changes,
     )
 
 
@@ -353,9 +364,31 @@ def _extension_key(extension: ExtensionDescriptor) -> str:
 
 
 def _duplicate_extension_keys(extensions: list[ExtensionDescriptor], *, repo_root: Path) -> list[str]:
+    changes = _preview_import_changes(extensions, repo_root=repo_root)
+    return sorted(change.key for change in changes if change.action == "conflict")
+
+
+def _preview_import_changes(
+    extensions: list[ExtensionDescriptor],
+    *,
+    repo_root: Path,
+) -> list[ExtensionImportPreviewChange]:
     catalog = load_extension_catalog(_manifest_paths(repo_root), repo_root=repo_root)
-    existing = {_extension_key(extension) for extension in catalog.all()}
-    return sorted(_extension_key(extension) for extension in extensions if _extension_key(extension) in existing)
+    existing = {_extension_key(extension): extension for extension in catalog.all()}
+    changes: list[ExtensionImportPreviewChange] = []
+    for extension in extensions:
+        key = _extension_key(extension)
+        existing_extension = existing.get(key)
+        changes.append(
+            ExtensionImportPreviewChange(
+                key=key,
+                action="conflict" if existing_extension else "add",
+                extension=ExtensionResponse.model_validate(extension.model_dump()),
+                existing=ExtensionResponse.model_validate(existing_extension.model_dump()) if existing_extension else None,
+                reason="Extension already exists in the active catalog." if existing_extension else None,
+            )
+        )
+    return changes
 
 
 def _append_imported_extensions(repo_root: Path, *, manifest: ExtensionManifest, extensions: list[ExtensionDescriptor]) -> None:

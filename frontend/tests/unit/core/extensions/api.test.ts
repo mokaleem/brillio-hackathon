@@ -178,6 +178,15 @@ describe("extension management api", () => {
         errors: [],
         warnings: [],
         duplicates: [],
+        changes: [
+          {
+            key: "tool:csv-export",
+            action: "add",
+            extension: { kind: "tool", name: "csv-export" },
+            existing: null,
+            reason: null,
+          },
+        ],
       }),
     );
 
@@ -186,6 +195,7 @@ describe("extension management api", () => {
     ).resolves.toMatchObject({
       valid: true,
       extensions: [{ name: "csv-export" }],
+      changes: [{ key: "tool:csv-export", action: "add" }],
     });
     expect(mockedFetch).toHaveBeenCalledWith("/api/extensions/import/preview", {
       method: "POST",

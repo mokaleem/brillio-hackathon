@@ -683,6 +683,7 @@ function ExtensionImportDialog({
                       {preview.duplicates.length} duplicates
                     </Badge>
                   )}
+                  <ImportDiffBadges preview={preview} />
                   <ImportReviewBadges preview={preview} />
                 </div>
                 {preview.errors.length > 0 || preview.warnings.length > 0 ? (
@@ -708,6 +709,7 @@ function ExtensionImportDialog({
                     const key = extensionKey(extension);
                     const duplicate = preview.duplicates.includes(key);
                     const blocked = hasIssueForExtension(preview.errors, key);
+                    const change = findImportPreviewChange(preview, key);
                     return (
                       <li
                         key={key}
@@ -720,6 +722,7 @@ function ExtensionImportDialog({
                           <div className="text-muted-foreground mt-1 flex flex-wrap gap-2 text-xs">
                             <span>{formatExtensionKind(extension.kind)}</span>
                             <span className="font-mono">{extension.name}</span>
+                            <ImportChangeBadge action={change?.action} />
                             <RiskBadge riskLevel={extension.risk_level} />
                             {isExternalSource(extension) && (
                               <Badge variant="secondary">External</Badge>
@@ -730,7 +733,11 @@ function ExtensionImportDialog({
                                 Blocked
                               </Badge>
                             )}
-                            {duplicate && <span>Already configured</span>}
+                            {duplicate && (
+                              <span>
+                                {change?.reason ?? "Already configured"}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <Switch
@@ -766,6 +773,38 @@ function ExtensionImportDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function ImportDiffBadges({
+  preview,
+}: {
+  preview: ExtensionImportPreviewResponse;
+}) {
+  const addCount = preview.changes.filter(
+    (change) => change.action === "add",
+  ).length;
+  const conflictCount = preview.changes.filter(
+    (change) => change.action === "conflict",
+  ).length;
+  return (
+    <>
+      <Badge variant="outline">{addCount} add</Badge>
+      <Badge variant={conflictCount > 0 ? "destructive" : "outline"}>
+        {conflictCount} conflicts
+      </Badge>
+    </>
+  );
+}
+
+function ImportChangeBadge({
+  action,
+}: {
+  action: "add" | "conflict" | undefined;
+}) {
+  if (action === "conflict") {
+    return <Badge variant="destructive">Conflict</Badge>;
+  }
+  return <Badge variant="outline">Add</Badge>;
 }
 
 function ImportReviewBadges({
@@ -1130,6 +1169,13 @@ function ExtensionBrowserEmpty() {
 
 function extensionKey(extension: ExtensionDescriptor) {
   return `${extension.kind}:${extension.name}`;
+}
+
+function findImportPreviewChange(
+  preview: ExtensionImportPreviewResponse,
+  key: string,
+) {
+  return preview.changes.find((change) => change.key === key);
 }
 
 function formatImportedAt(value: string) {

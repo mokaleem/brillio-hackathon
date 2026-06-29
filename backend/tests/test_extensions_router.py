@@ -272,6 +272,15 @@ def test_extensions_import_preview_returns_external_manifest(monkeypatch, tmp_pa
     assert payload["valid"] is True
     assert payload["count"] == 1
     assert payload["extensions"][0]["name"] == "forecast-export"
+    assert payload["changes"] == [
+        {
+            "key": "tool:forecast-export",
+            "action": "add",
+            "extension": payload["extensions"][0],
+            "existing": None,
+            "reason": None,
+        }
+    ]
     assert any("tool:forecast-export comes from source 'registry'" in warning for warning in payload["warnings"])
     assert any("tool:forecast-export does not declare a risk_level" in warning for warning in payload["warnings"])
 
@@ -410,6 +419,10 @@ def test_extensions_import_preview_reports_duplicates(monkeypatch, tmp_path: Pat
     payload = response.json()
     assert payload["valid"] is False
     assert payload["duplicates"] == ["tool:forecast-export"]
+    assert payload["changes"][0]["key"] == "tool:forecast-export"
+    assert payload["changes"][0]["action"] == "conflict"
+    assert payload["changes"][0]["existing"]["source"] == "local"
+    assert payload["changes"][0]["reason"] == "Extension already exists in the active catalog."
 
 
 def test_extensions_import_selected_descriptors(monkeypatch, tmp_path: Path) -> None:

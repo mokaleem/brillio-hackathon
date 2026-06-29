@@ -109,6 +109,7 @@ export async function previewExtensionImport(
     errors: data.errors ?? [],
     warnings: data.warnings ?? [],
     duplicates: data.duplicates ?? [],
+    changes: data.changes ?? [],
   };
 }
 

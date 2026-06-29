@@ -226,6 +226,15 @@ function mockExtensionRegistryAPI(page: Page) {
           valid: false,
           count: 1,
           extensions: [blockedExtension],
+          changes: [
+            {
+              key: "tool:shell-tool",
+              action: "add",
+              extension: blockedExtension,
+              existing: null,
+              reason: null,
+            },
+          ],
           errors: [
             "tool:shell-tool entrypoint 'os:system' is not allowed by DEERFLOW_EXTENSION_IMPORT_ENTRYPOINT_PREFIXES.",
           ],
@@ -241,6 +250,15 @@ function mockExtensionRegistryAPI(page: Page) {
         valid: true,
         count: 1,
         extensions: [importedExtension],
+        changes: [
+          {
+            key: "tool:forecast-export",
+            action: "add",
+            extension: importedExtension,
+            existing: null,
+            reason: null,
+          },
+        ],
         errors: [],
         warnings: [
           "Imported registry source: external://hackathon-forecast-registry",
@@ -439,6 +457,8 @@ test.describe("Hackathon demo flow", () => {
         "Imported registry source: external://hackathon-forecast-registry",
       ),
     ).toBeVisible();
+    await expect(page.getByText("1 add")).toBeVisible();
+    await expect(page.getByText("0 conflicts")).toBeVisible();
 
     await page.getByRole("button", { name: /Import Selected/i }).click();
     await expect(

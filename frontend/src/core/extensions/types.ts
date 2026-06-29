@@ -59,4 +59,13 @@ export interface ExtensionImportPreviewResponse {
   errors: string[];
   warnings: string[];
   duplicates: string[];
+  changes: ExtensionImportPreviewChange[];
+}
+
+export interface ExtensionImportPreviewChange {
+  key: string;
+  action: "add" | "conflict";
+  extension: ExtensionDescriptor;
+  existing?: ExtensionDescriptor | null;
+  reason?: string | null;
 }
