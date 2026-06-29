@@ -2,8 +2,10 @@ import { describe, expect, test } from "@rstest/core";
 
 import {
   buildRunLifecycleEvent,
+  compactRunTimelineEvents,
   normalizeCustomTimelineEvent,
   normalizeLangChainTimelineEvent,
+  readRunTimelineEvents,
 } from "@/core/threads/timeline";
 
 describe("run timeline helpers", () => {
@@ -49,5 +51,20 @@ describe("run timeline helpers", () => {
       label: "Llm Retry",
       summary: "Retrying model request",
     });
+  });
+
+  test("reads and compacts persisted timeline events", () => {
+    const first = buildRunLifecycleEvent("start", 0);
+    const second = buildRunLifecycleEvent("end", 1);
+
+    expect(
+      readRunTimelineEvents([
+        first,
+        { id: "bad", kind: "run" },
+        second,
+        null,
+      ]),
+    ).toEqual([first, second]);
+    expect(compactRunTimelineEvents([first, second], 1)).toEqual([second]);
   });
 });

@@ -12,6 +12,20 @@ export type RunTimelineEvent = {
   summary: string | null;
 };
 
+export function compactRunTimelineEvents(
+  events: RunTimelineEvent[],
+  maxEvents = 200,
+): RunTimelineEvent[] {
+  return events.slice(-maxEvents);
+}
+
+export function readRunTimelineEvents(value: unknown): RunTimelineEvent[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isRunTimelineEvent);
+}
+
 export function buildRunLifecycleEvent(
   phase: Extract<RunTimelinePhase, "start" | "end">,
   index: number,
@@ -155,4 +169,38 @@ function truncate(value: string, maxLength = 140): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isRunTimelineEvent(value: unknown): value is RunTimelineEvent {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    readString(value.id) !== null &&
+    readString(value.timestamp) !== null &&
+    isRunTimelineKind(value.kind) &&
+    isRunTimelinePhase(value.phase) &&
+    readString(value.name) !== null &&
+    readString(value.label) !== null &&
+    (value.summary === null || typeof value.summary === "string")
+  );
+}
+
+function isRunTimelineKind(value: unknown): value is RunTimelineKind {
+  return (
+    value === "run" ||
+    value === "chain" ||
+    value === "tool" ||
+    value === "model" ||
+    value === "custom"
+  );
+}
+
+function isRunTimelinePhase(value: unknown): value is RunTimelinePhase {
+  return (
+    value === "start" ||
+    value === "end" ||
+    value === "stream" ||
+    value === "event"
+  );
 }

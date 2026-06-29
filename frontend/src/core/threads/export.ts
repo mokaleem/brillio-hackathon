@@ -9,6 +9,7 @@ import {
   stripInternalMarkers,
 } from "../messages/utils";
 
+import { readRunTimelineEvents, type RunTimelineEvent } from "./timeline";
 import type { AgentThread } from "./types";
 import { titleOfThread } from "./utils";
 
@@ -28,6 +29,7 @@ export interface ExportOptions {
   includeToolCalls?: boolean;
   includeToolMessages?: boolean;
   includeHidden?: boolean;
+  includeTimeline?: boolean;
 }
 
 function visibleMessages(
@@ -122,7 +124,23 @@ export function formatThreadAsMarkdown(
     }
   }
 
+  if (options.includeTimeline ?? true) {
+    const timeline = readRunTimelineEvents(thread.values.run_timeline_events);
+    if (timeline.length > 0) {
+      lines.push("## Run Trace", "");
+      for (const event of timeline) {
+        lines.push(formatTimelineMarkdownEvent(event));
+      }
+      lines.push("", "---", "");
+    }
+  }
+
   return lines.join("\n").trimEnd() + "\n";
+}
+
+function formatTimelineMarkdownEvent(event: RunTimelineEvent): string {
+  const summary = event.summary ? `: ${event.summary}` : "";
+  return `- ${event.timestamp} - **${event.label}** (${event.kind}/${event.phase})${summary}`;
 }
 
 interface JSONExportMessage {
@@ -184,6 +202,13 @@ export function formatThreadAsJSON(
     messages: visibleMessages(messages, options)
       .map((msg) => buildJSONMessage(msg, options))
       .filter((m): m is JSONExportMessage => m !== null),
+    ...(options.includeTimeline ?? true
+      ? {
+          run_timeline_events: readRunTimelineEvents(
+            thread.values.run_timeline_events,
+          ),
+        }
+      : {}),
   };
   return JSON.stringify(exportData, null, 2);
 }

@@ -33,8 +33,10 @@ import {
 } from "./thread-search-query";
 import {
   buildRunLifecycleEvent,
+  compactRunTimelineEvents,
   normalizeCustomTimelineEvent,
   normalizeLangChainTimelineEvent,
+  readRunTimelineEvents,
   type RunTimelineEvent,
 } from "./timeline";
 import { threadTokenUsageQueryKey } from "./token-usage";
@@ -607,6 +609,7 @@ export function useThreadStream({
   const [pendingSupersededMessageIds, setPendingSupersededMessageIds] =
     useState<ReadonlySet<string>>(() => new Set());
   const [timelineEvents, setTimelineEvents] = useState<RunTimelineEvent[]>([]);
+  const timelineEventsRef = useRef<RunTimelineEvent[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   // Track the thread ID that is currently streaming to handle thread changes during streaming
   const [onStreamThreadId, setOnStreamThreadId] = useState(() => threadId);
@@ -686,11 +689,15 @@ export function useThreadStream({
   const updateSubtask = useUpdateSubtask();
   const appendTimelineEvent = useCallback((event: RunTimelineEvent | null) => {
     if (!event) {
-      return;
+      return timelineEventsRef.current;
     }
-    setTimelineEvents((current) =>
-      [...current, event].slice(-MAX_TIMELINE_EVENTS),
+    const next = compactRunTimelineEvents(
+      [...timelineEventsRef.current, event],
+      MAX_TIMELINE_EVENTS,
     );
+    timelineEventsRef.current = next;
+    setTimelineEvents(next);
+    return next;
   }, []);
 
   const thread = useStream<AgentThreadState>({
@@ -880,9 +887,19 @@ export function useThreadStream({
       }
     },
     onFinish(state) {
-      appendTimelineEvent(
+      const finalTimelineEvents = appendTimelineEvent(
         buildRunLifecycleEvent("end", timelineEventIndexRef.current++),
       );
+      const finishedThreadId = threadIdRef.current;
+      if (finishedThreadId && finalTimelineEvents.length > 0) {
+        getAPIClient()
+          .threads.updateState(finishedThreadId, {
+            values: { run_timeline_events: finalTimelineEvents },
+          })
+          .catch(() => {
+            console.warn("Failed to persist run timeline events.");
+          });
+      }
       listeners.current.onFinish?.(state.values);
       pendingUsageBaselineMessageIdsRef.current = new Set(
         messagesRef.current
@@ -948,6 +965,7 @@ export function useThreadStream({
     setPendingSupersededRunIds(new Set());
     setPendingSupersededMessageIds(new Set());
     setTimelineEvents([]);
+    timelineEventsRef.current = [];
     prevHumanMsgCountRef.current =
       latestMessageCountsRef.current.humanMessageCount;
   }, [threadId]);
@@ -1349,6 +1367,12 @@ export function useThreadStream({
     messages: mergedMessages,
   } as typeof thread;
 
+  const persistedTimelineEvents = readRunTimelineEvents(
+    thread.values.run_timeline_events,
+  );
+  const visibleTimelineEvents =
+    timelineEvents.length > 0 ? timelineEvents : persistedTimelineEvents;
+
   return {
     thread: mergedThread,
     pendingUsageMessages,
@@ -1358,7 +1382,7 @@ export function useThreadStream({
     isHistoryLoading,
     hasMoreHistory,
     loadMoreHistory,
-    timelineEvents,
+    timelineEvents: visibleTimelineEvents,
   } as const;
 }
 

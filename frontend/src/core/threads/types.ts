@@ -2,11 +2,14 @@ import type { Message, Thread } from "@langchain/langgraph-sdk";
 
 import type { Todo } from "../todos";
 
+import type { RunTimelineEvent } from "./timeline";
+
 export interface AgentThreadState extends Record<string, unknown> {
   title: string;
   messages: Message[];
   artifacts?: string[];
   todos?: Todo[];
+  run_timeline_events?: RunTimelineEvent[];
 }
 
 export interface AgentThreadContext extends Record<string, unknown> {
