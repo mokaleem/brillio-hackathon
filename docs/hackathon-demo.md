@@ -82,6 +82,14 @@ In the no-LLM smoke path, these appear under:
 
 In a real chat run, artifact paths appear in the assistant result and the artifacts panel.
 
+## Registry Import Trust Boundary
+
+Registry import is an admin-only operation. Treat external registry JSON as code-adjacent configuration because descriptors can point at Python functions, local skill paths, and MCP process metadata.
+
+The gateway fails closed for oversized manifests, too many descriptors, duplicate capability names, malformed entrypoints, path traversal, and entrypoints outside `DEERFLOW_EXTENSION_IMPORT_ENTRYPOINT_PREFIXES`. The default prefix set allows this repo's internal/company namespaces and DeerFlow-owned entrypoints; production deployments should narrow it to reviewed package namespaces.
+
+The UI enforces the same 512 KiB manifest size limit for uploaded and fetched registries before preview. Pasted JSON is still validated by the gateway. Preview warnings call out non-local sources, missing risk levels, high-risk descriptors, and duplicates so admins can review before importing.
+
 ## Fallbacks
 
 If the registry page cannot load:

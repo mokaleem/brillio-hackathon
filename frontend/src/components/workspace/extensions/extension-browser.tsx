@@ -71,6 +71,7 @@ import { cn } from "@/lib/utils";
 const EXTENSION_QUERY_KEY = ["extensions", "catalog"] as const;
 const EXTENSION_HEALTH_QUERY_KEY = ["extensions", "health"] as const;
 const EMPTY_EXTENSIONS: ExtensionDescriptor[] = [];
+const IMPORT_MANIFEST_MAX_BYTES = 512 * 1024;
 
 const kindOptions: { value: ExtensionKindFilter; label: string }[] = [
   { value: "all", label: "All types" },
@@ -419,14 +420,22 @@ function ExtensionImportDialog({
     [selected],
   );
 
+  const setImportJson = (json: string) => {
+    setManifestJson(json);
+    setPreview(null);
+  };
+
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) {
       return;
     }
-    setManifestJson(await file.text());
-    setPreview(null);
+    if (file.size > IMPORT_MANIFEST_MAX_BYTES) {
+      toast.error(formatImportSizeError(file.size));
+      return;
+    }
+    setImportJson(await file.text());
   };
 
   const handleFetchUrl = async () => {
@@ -438,12 +447,29 @@ function ExtensionImportDialog({
       if (!response.ok) {
         throw new Error(`Registry URL returned ${response.status}`);
       }
-      setManifestJson(await response.text());
-      setPreview(null);
+      const contentLength = response.headers.get("content-length");
+      if (contentLength && Number(contentLength) > IMPORT_MANIFEST_MAX_BYTES) {
+        throw new Error(formatImportSizeError(Number(contentLength)));
+      }
+      const text = await response.text();
+      const size = getImportManifestByteLength(text);
+      if (size > IMPORT_MANIFEST_MAX_BYTES) {
+        throw new Error(formatImportSizeError(size));
+      }
+      setImportJson(text);
       toast.success("Registry JSON loaded");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
     }
+  };
+
+  const handlePreview = () => {
+    const size = getImportManifestByteLength(manifestJson);
+    if (size > IMPORT_MANIFEST_MAX_BYTES) {
+      toast.error(formatImportSizeError(size));
+      return;
+    }
+    previewMutation.mutate(manifestJson);
   };
 
   const canImport =
@@ -494,10 +520,7 @@ function ExtensionImportDialog({
               <Textarea
                 id="registry-json"
                 value={manifestJson}
-                onChange={(event) => {
-                  setManifestJson(event.target.value);
-                  setPreview(null);
-                }}
+                onChange={(event) => setImportJson(event.target.value)}
                 className="min-h-48 font-mono text-xs"
                 placeholder='{"version":1,"extensions":[]}'
               />
@@ -516,7 +539,7 @@ function ExtensionImportDialog({
                 </Button>
                 <Button
                   size="sm"
-                  onClick={() => previewMutation.mutate(manifestJson)}
+                  onClick={handlePreview}
                   disabled={!manifestJson.trim() || previewMutation.isPending}
                 >
                   <CheckCircle2Icon className="size-4" />
@@ -918,4 +941,24 @@ function ExtensionBrowserEmpty() {
 
 function extensionKey(extension: ExtensionDescriptor) {
   return `${extension.kind}:${extension.name}`;
+}
+
+function getImportManifestByteLength(value: string) {
+  return new TextEncoder().encode(value).length;
+}
+
+function formatImportSizeError(size: number) {
+  return `Registry JSON is too large (${formatBytes(size)}). Limit is ${formatBytes(
+    IMPORT_MANIFEST_MAX_BYTES,
+  )}.`;
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KiB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
 }

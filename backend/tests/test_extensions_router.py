@@ -268,6 +268,94 @@ def test_extensions_import_preview_returns_external_manifest(monkeypatch, tmp_pa
     assert payload["valid"] is True
     assert payload["count"] == 1
     assert payload["extensions"][0]["name"] == "forecast-export"
+    assert any("tool:forecast-export comes from source 'registry'" in warning for warning in payload["warnings"])
+    assert any("tool:forecast-export does not declare a risk_level" in warning for warning in payload["warnings"])
+
+
+def test_extensions_import_preview_rejects_oversized_manifest(monkeypatch, tmp_path: Path) -> None:
+    base_manifest = tmp_path / "registries" / "internal_extensions.example.json"
+    base_manifest.parent.mkdir()
+    base_manifest.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
+    monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+    monkeypatch.setenv("DEERFLOW_EXTENSION_IMPORT_MAX_BYTES", "64")
+
+    manifest_json = '{"version": 1, "extensions": [], "metadata": {"padding": "' + ("x" * 128) + '"}}'
+
+    with TestClient(_make_admin_app()) as client:
+        response = client.post("/api/extensions/import/preview", json={"manifest_json": manifest_json})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["valid"] is False
+    assert "too large" in payload["errors"][0]
+
+
+def test_extensions_import_preview_rejects_too_many_descriptors(monkeypatch, tmp_path: Path) -> None:
+    base_manifest = tmp_path / "registries" / "internal_extensions.example.json"
+    base_manifest.parent.mkdir()
+    base_manifest.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
+    monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+    monkeypatch.setenv("DEERFLOW_EXTENSION_IMPORT_MAX_EXTENSIONS", "1")
+
+    manifest_json = """
+    {
+      "version": 1,
+      "extensions": [
+        {
+          "kind": "tool",
+          "name": "first-tool",
+          "source": "registry",
+          "entrypoint": "company_tools.first:tool"
+        },
+        {
+          "kind": "tool",
+          "name": "second-tool",
+          "source": "registry",
+          "entrypoint": "company_tools.second:tool"
+        }
+      ]
+    }
+    """
+
+    with TestClient(_make_admin_app()) as client:
+        response = client.post("/api/extensions/import/preview", json={"manifest_json": manifest_json})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["valid"] is False
+    assert "Limit is 1 extensions" in payload["errors"][0]
+
+
+def test_extensions_import_preview_blocks_dangerous_entrypoints(monkeypatch, tmp_path: Path) -> None:
+    base_manifest = tmp_path / "registries" / "internal_extensions.example.json"
+    base_manifest.parent.mkdir()
+    base_manifest.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
+    monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+
+    manifest_json = """
+    {
+      "version": 1,
+      "extensions": [
+        {
+          "kind": "tool",
+          "name": "shell-tool",
+          "enabled": true,
+          "source": "registry",
+          "entrypoint": "os:system",
+          "risk_level": "high"
+        }
+      ]
+    }
+    """
+
+    with TestClient(_make_admin_app()) as client:
+        response = client.post("/api/extensions/import/preview", json={"manifest_json": manifest_json})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["valid"] is False
+    assert "not allowed by DEERFLOW_EXTENSION_IMPORT_ENTRYPOINT_PREFIXES" in payload["errors"][0]
+    assert any("marked high risk" in warning for warning in payload["warnings"])
 
 
 def test_extensions_import_preview_reports_duplicates(monkeypatch, tmp_path: Path) -> None:
@@ -356,3 +444,34 @@ def test_extensions_import_selected_descriptors(monkeypatch, tmp_path: Path) -> 
     assert payload["extensions"][0]["enabled"] is True
     imported_manifest = tmp_path / "registries" / "imported_extensions.json"
     assert imported_manifest.exists()
+
+
+def test_extensions_import_blocks_dangerous_selected_entrypoint(monkeypatch, tmp_path: Path) -> None:
+    base_manifest = tmp_path / "registries" / "internal_extensions.example.json"
+    base_manifest.parent.mkdir()
+    base_manifest.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
+    monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+
+    manifest_json = """
+    {
+      "version": 1,
+      "extensions": [
+        {
+          "kind": "tool",
+          "name": "shell-tool",
+          "enabled": false,
+          "source": "registry",
+          "entrypoint": "os:system"
+        }
+      ]
+    }
+    """
+
+    with TestClient(_make_admin_app()) as client:
+        response = client.post(
+            "/api/extensions/import",
+            json={"manifest_json": manifest_json, "selected": ["tool:shell-tool"]},
+        )
+
+    assert response.status_code == 400
+    assert "not allowed by DEERFLOW_EXTENSION_IMPORT_ENTRYPOINT_PREFIXES" in response.json()["detail"]

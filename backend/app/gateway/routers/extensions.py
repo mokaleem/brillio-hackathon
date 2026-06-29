@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -9,10 +10,31 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, ValidationError
 
 from app.gateway.deps import require_admin_user
-from deerflow.extensions import ExtensionDescriptor, ExtensionKind, ExtensionManifest, load_extension_catalog, validate_extension_registry
+from deerflow.extensions import (
+    ExtensionDescriptor,
+    ExtensionKind,
+    ExtensionManifest,
+    ExtensionSource,
+    load_extension_catalog,
+    validate_extension_registry,
+)
 
 _ADMIN_REQUIRED_DETAIL = "Admin privileges required to manage extension registry configuration."
 _IMPORTED_EXTENSION_MANIFEST = Path("registries") / "imported_extensions.json"
+_DEFAULT_IMPORT_MAX_BYTES = 512 * 1024
+_DEFAULT_IMPORT_MAX_EXTENSIONS = 200
+_DEFAULT_ALLOWED_ENTRYPOINT_PREFIXES = (
+    "internal_tools.",
+    "internal_agents.",
+    "internal_mcps.",
+    "internal_skills/",
+    "company_tools.",
+    "company_agents.",
+    "company_skills/",
+    "deerflow.",
+)
+_PYTHON_ENTRYPOINT_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_.]*$")
+_PYTHON_ENTRYPOINT_KINDS = {ExtensionKind.AGENT, ExtensionKind.TOOL}
 
 router = APIRouter(prefix="/api", tags=["extensions"])
 
@@ -143,8 +165,13 @@ async def preview_extension_import(request: Request, body: ExtensionImportPrevie
     manifest, errors = _parse_import_manifest(body.manifest_json)
     if manifest is None:
         return ExtensionImportPreviewResponse(valid=False, count=0, errors=errors)
+    safety_errors, safety_warnings = _import_safety_messages(manifest.extensions)
+    errors.extend(safety_errors)
     duplicates = _duplicate_extension_keys(manifest.extensions, repo_root=repo_root)
-    warnings = [f"Duplicate extension already configured: {key}" for key in duplicates]
+    warnings = [
+        *safety_warnings,
+        *[f"Duplicate extension already configured: {key}" for key in duplicates],
+    ]
     return ExtensionImportPreviewResponse(
         valid=len(errors) == 0 and len(duplicates) == 0,
         count=len(manifest.extensions),
@@ -167,6 +194,10 @@ async def import_extensions(request: Request, body: ExtensionImportRequest) -> E
     extensions_to_import = [extension.model_copy(update={"enabled": True}) for extension in manifest.extensions if not selected or _extension_key(extension) in selected]
     if not extensions_to_import:
         raise HTTPException(status_code=400, detail="Select at least one extension to import.")
+
+    safety_errors, _ = _import_safety_messages(extensions_to_import)
+    if safety_errors:
+        raise HTTPException(status_code=400, detail=safety_errors[0])
 
     duplicates = _duplicate_extension_keys(extensions_to_import, repo_root=repo_root)
     if duplicates:
@@ -227,13 +258,90 @@ def _set_extension_enabled(paths: list[Path], *, kind: ExtensionKind, name: str,
 
 
 def _parse_import_manifest(manifest_json: str) -> tuple[ExtensionManifest | None, list[str]]:
+    manifest_size = len(manifest_json.encode("utf-8"))
+    max_bytes = _import_max_manifest_bytes()
+    if manifest_size > max_bytes:
+        return None, [f"Manifest JSON is too large ({manifest_size} bytes). Limit is {max_bytes} bytes."]
     try:
         payload = json.loads(manifest_json)
-        return ExtensionManifest.model_validate(payload), []
+        manifest = ExtensionManifest.model_validate(payload)
     except json.JSONDecodeError as exc:
         return None, [f"Manifest JSON is invalid: {exc.msg}"]
     except ValidationError as exc:
         return None, [error["msg"] for error in exc.errors()]
+    max_extensions = _import_max_extensions()
+    if len(manifest.extensions) > max_extensions:
+        return None, [f"Manifest contains {len(manifest.extensions)} extensions. Limit is {max_extensions} extensions."]
+    return manifest, []
+
+
+def _import_safety_messages(extensions: list[ExtensionDescriptor]) -> tuple[list[str], list[str]]:
+    errors: list[str] = []
+    warnings: list[str] = []
+    allowed_prefixes = _allowed_import_entrypoint_prefixes()
+
+    for extension in extensions:
+        key = _extension_key(extension)
+        entrypoint = extension.entrypoint or ""
+        if extension.source is not ExtensionSource.LOCAL:
+            warnings.append(f"{key} comes from source '{extension.source.value}'. Review registry trust before importing.")
+        if extension.risk_level is None:
+            warnings.append(f"{key} does not declare a risk_level.")
+        elif extension.risk_level == "high":
+            warnings.append(f"{key} is marked high risk; review before enabling in production.")
+
+        if not entrypoint:
+            if extension.kind in _PYTHON_ENTRYPOINT_KINDS:
+                errors.append(f"{key} must define an entrypoint.")
+            continue
+
+        if _has_dangerous_entrypoint_path(entrypoint):
+            errors.append(f"{key} entrypoint '{entrypoint}' must not contain path traversal or control characters.")
+            continue
+
+        if extension.kind in _PYTHON_ENTRYPOINT_KINDS and not _PYTHON_ENTRYPOINT_PATTERN.fullmatch(entrypoint):
+            errors.append(f"{key} entrypoint '{entrypoint}' must use module:function syntax.")
+            continue
+
+        if not _entrypoint_prefix_allowed(entrypoint, allowed_prefixes):
+            errors.append(f"{key} entrypoint '{entrypoint}' is not allowed by DEERFLOW_EXTENSION_IMPORT_ENTRYPOINT_PREFIXES.")
+
+    return errors, warnings
+
+
+def _has_dangerous_entrypoint_path(entrypoint: str) -> bool:
+    return "\x00" in entrypoint or "\r" in entrypoint or "\n" in entrypoint or entrypoint.startswith(("/", "\\")) or ".." in entrypoint or "\\" in entrypoint
+
+
+def _entrypoint_prefix_allowed(entrypoint: str, allowed_prefixes: tuple[str, ...]) -> bool:
+    return "*" in allowed_prefixes or any(entrypoint.startswith(prefix) for prefix in allowed_prefixes)
+
+
+def _allowed_import_entrypoint_prefixes() -> tuple[str, ...]:
+    configured = os.environ.get("DEERFLOW_EXTENSION_IMPORT_ENTRYPOINT_PREFIXES")
+    if configured is None:
+        return _DEFAULT_ALLOWED_ENTRYPOINT_PREFIXES
+    prefixes = tuple(prefix.strip() for prefix in configured.split(",") if prefix.strip())
+    return prefixes or _DEFAULT_ALLOWED_ENTRYPOINT_PREFIXES
+
+
+def _import_max_manifest_bytes() -> int:
+    return _env_positive_int("DEERFLOW_EXTENSION_IMPORT_MAX_BYTES", _DEFAULT_IMPORT_MAX_BYTES)
+
+
+def _import_max_extensions() -> int:
+    return _env_positive_int("DEERFLOW_EXTENSION_IMPORT_MAX_EXTENSIONS", _DEFAULT_IMPORT_MAX_EXTENSIONS)
+
+
+def _env_positive_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
 
 
 def _extension_key(extension: ExtensionDescriptor) -> str:
