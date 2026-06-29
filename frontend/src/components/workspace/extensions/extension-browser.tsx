@@ -5,6 +5,7 @@ import {
   BotIcon,
   CheckCircle2Icon,
   Code2Icon,
+  CopyIcon,
   FileTextIcon,
   FileJsonIcon,
   PackageOpenIcon,
@@ -72,6 +73,36 @@ const EXTENSION_QUERY_KEY = ["extensions", "catalog"] as const;
 const EXTENSION_HEALTH_QUERY_KEY = ["extensions", "health"] as const;
 const EMPTY_EXTENSIONS: ExtensionDescriptor[] = [];
 const IMPORT_MANIFEST_MAX_BYTES = 512 * 1024;
+const SAMPLE_REGISTRY_JSON = JSON.stringify(
+  {
+    version: 1,
+    metadata: {
+      registry: "finance-demo",
+      reviewed_by: "platform",
+    },
+    extensions: [
+      {
+        kind: "tool",
+        name: "forecast-export",
+        enabled: false,
+        source: "registry",
+        entrypoint: "company_tools.forecast:export",
+        description: "Export forecast rows to a reviewed CSV format",
+        tags: ["finance", "artifact"],
+        risk_level: "medium",
+        display_name: "Forecast Export",
+        metadata: {
+          prompt_template: "Use {{display_name}} to export forecast rows for ",
+          input_schema: {
+            rows_json: "JSON array of forecast rows",
+          },
+        },
+      },
+    ],
+  },
+  null,
+  2,
+);
 
 const kindOptions: { value: ExtensionKindFilter; label: string }[] = [
   { value: "all", label: "All types" },
@@ -472,6 +503,16 @@ function ExtensionImportDialog({
     previewMutation.mutate(manifestJson);
   };
 
+  const handleCopySample = async () => {
+    setImportJson(SAMPLE_REGISTRY_JSON);
+    try {
+      await navigator.clipboard.writeText(SAMPLE_REGISTRY_JSON);
+      toast.success("Sample registry JSON copied");
+    } catch {
+      toast.success("Sample registry JSON loaded");
+    }
+  };
+
   const canImport =
     Boolean(preview) &&
     (preview?.errors.length ?? 0) === 0 &&
@@ -537,6 +578,10 @@ function ExtensionImportDialog({
                     />
                   </label>
                 </Button>
+                <Button variant="outline" size="sm" onClick={handleCopySample}>
+                  <CopyIcon className="size-4" />
+                  Copy Sample
+                </Button>
                 <Button
                   size="sm"
                   onClick={handlePreview}
@@ -561,6 +606,7 @@ function ExtensionImportDialog({
                       {preview.duplicates.length} duplicates
                     </Badge>
                   )}
+                  <ImportReviewBadges preview={preview} />
                 </div>
                 {preview.errors.length > 0 || preview.warnings.length > 0 ? (
                   <div className="grid gap-2 border-b px-3 py-3 text-xs">
@@ -584,6 +630,7 @@ function ExtensionImportDialog({
                   {preview.extensions.map((extension) => {
                     const key = extensionKey(extension);
                     const duplicate = preview.duplicates.includes(key);
+                    const blocked = hasIssueForExtension(preview.errors, key);
                     return (
                       <li
                         key={key}
@@ -596,6 +643,16 @@ function ExtensionImportDialog({
                           <div className="text-muted-foreground mt-1 flex flex-wrap gap-2 text-xs">
                             <span>{formatExtensionKind(extension.kind)}</span>
                             <span className="font-mono">{extension.name}</span>
+                            <RiskBadge riskLevel={extension.risk_level} />
+                            {isExternalSource(extension) && (
+                              <Badge variant="secondary">External</Badge>
+                            )}
+                            {blocked && (
+                              <Badge variant="destructive">
+                                <ShieldAlertIcon className="size-3" />
+                                Blocked
+                              </Badge>
+                            )}
                             {duplicate && <span>Already configured</span>}
                           </div>
                         </div>
@@ -631,6 +688,42 @@ function ExtensionImportDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ImportReviewBadges({
+  preview,
+}: {
+  preview: ExtensionImportPreviewResponse;
+}) {
+  const externalCount = preview.extensions.filter(isExternalSource).length;
+  const highRiskCount = preview.extensions.filter(
+    (extension) => extension.risk_level === "high",
+  ).length;
+  const blockedCount = collectIssueKeys(preview.errors).size;
+  const warningCount = preview.warnings.length;
+
+  return (
+    <>
+      {externalCount > 0 && (
+        <Badge variant="secondary">{externalCount} external</Badge>
+      )}
+      {highRiskCount > 0 && (
+        <Badge variant="destructive">
+          <ShieldAlertIcon className="size-3" />
+          {highRiskCount} high risk
+        </Badge>
+      )}
+      {blockedCount > 0 && (
+        <Badge variant="destructive">
+          <ShieldAlertIcon className="size-3" />
+          {blockedCount} blocked
+        </Badge>
+      )}
+      {warningCount > 0 && (
+        <Badge variant="secondary">{warningCount} warnings</Badge>
+      )}
+    </>
   );
 }
 
@@ -941,6 +1034,25 @@ function ExtensionBrowserEmpty() {
 
 function extensionKey(extension: ExtensionDescriptor) {
   return `${extension.kind}:${extension.name}`;
+}
+
+function isExternalSource(extension: ExtensionDescriptor) {
+  return extension.source !== "local";
+}
+
+function hasIssueForExtension(messages: string[], key: string) {
+  return collectIssueKeys(messages).has(key);
+}
+
+function collectIssueKeys(messages: string[]) {
+  const keys = new Set<string>();
+  for (const message of messages) {
+    const matches = message.matchAll(/\b(agent|mcp|tool|skill):[a-z0-9-]+\b/g);
+    for (const match of matches) {
+      keys.add(match[0]);
+    }
+  }
+  return keys;
 }
 
 function getImportManifestByteLength(value: string) {

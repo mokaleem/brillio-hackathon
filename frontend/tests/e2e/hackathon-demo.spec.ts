@@ -140,6 +140,21 @@ const importedExtension: MockExtension = {
   display_name: "Forecast Export",
 };
 
+const blockedExtension: MockExtension = {
+  kind: "tool",
+  name: "shell-tool",
+  enabled: true,
+  source: "registry",
+  entrypoint: "os:system",
+  description: "Attempts to execute an unapproved shell function.",
+  tags: ["blocked"],
+  metadata: {},
+  requires: [],
+  owner: "security-demo",
+  risk_level: "high",
+  display_name: "Shell Tool",
+};
+
 function mockExtensionRegistryAPI(page: Page) {
   let extensions = [...demoExtensions];
 
@@ -185,6 +200,21 @@ function mockExtensionRegistryAPI(page: Page) {
       pathname === "/api/extensions/import/preview"
     ) {
       const body = request.postDataJSON() as { manifest_json?: string };
+      if (body.manifest_json?.includes("shell-tool")) {
+        return fulfillJson(route, {
+          valid: false,
+          count: 1,
+          extensions: [blockedExtension],
+          errors: [
+            "tool:shell-tool entrypoint 'os:system' is not allowed by DEERFLOW_EXTENSION_IMPORT_ENTRYPOINT_PREFIXES.",
+          ],
+          warnings: [
+            "tool:shell-tool comes from source 'registry'. Review registry trust before importing.",
+            "tool:shell-tool is marked high risk; review before enabling in production.",
+          ],
+          duplicates: [],
+        });
+      }
       expect(body.manifest_json).toContain("forecast-export");
       return fulfillJson(route, {
         valid: true,
@@ -261,7 +291,11 @@ test.describe("Hackathon demo flow", () => {
       page.getByRole("heading", { name: "Import Extension Registry" }),
     ).toBeVisible();
 
-    await page.getByLabel("Registry JSON").fill(
+    const registryJson = page.getByLabel("Registry JSON");
+    await page.getByRole("button", { name: /Copy Sample/i }).click();
+    await expect(registryJson).toHaveValue(/forecast-export/);
+
+    await registryJson.fill(
       JSON.stringify({
         version: 1,
         extensions: [
@@ -321,5 +355,45 @@ test.describe("Hackathon demo flow", () => {
     await expect(textarea).toHaveValue(
       /internal_tools\.python_examples:summarize_metrics/,
     );
+  });
+
+  test("surfaces blocked registry import risk messaging", async ({ page }) => {
+    await page.goto("/workspace/extensions");
+    await expect(
+      page.getByRole("heading", { name: "Extension Registry" }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: /^Import$/ }).click();
+    await page.getByLabel("Registry JSON").fill(
+      JSON.stringify({
+        version: 1,
+        extensions: [
+          {
+            kind: "tool",
+            name: "shell-tool",
+            enabled: true,
+            source: "registry",
+            entrypoint: "os:system",
+            risk_level: "high",
+          },
+        ],
+      }),
+    );
+    await page.getByRole("button", { name: /Preview/i }).click();
+
+    await expect(page.getByText("Shell Tool", { exact: true })).toBeVisible();
+    await expect(page.getByText("1 external")).toBeVisible();
+    await expect(page.getByText("1 high risk")).toBeVisible();
+    await expect(page.getByText("1 blocked")).toBeVisible();
+    await expect(
+      page
+        .getByLabel("Import Extension Registry")
+        .getByText(
+          "tool:shell-tool entrypoint 'os:system' is not allowed by DEERFLOW_EXTENSION_IMPORT_ENTRYPOINT_PREFIXES.",
+        ),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /Import Selected/i }),
+    ).toBeDisabled();
   });
 });
