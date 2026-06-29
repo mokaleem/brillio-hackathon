@@ -253,6 +253,14 @@ docker compose -p deer-flow-demo \
 Open the UI at `http://localhost:3000`. Gateway API docs are available at
 `http://localhost:8001/api/docs` when `GATEWAY_ENABLE_DOCS=true`.
 
+For the one-command launcher:
+
+```bash
+python scripts/run_hackathon_demo.py
+```
+
+Use `--no-start` to bootstrap and validate without running Docker Compose.
+
 ## Troubleshooting
 
 If the UI loads but API calls fail, check whether the deployment is using

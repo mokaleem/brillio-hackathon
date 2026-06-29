@@ -239,9 +239,10 @@ def _check_demo_deploy_bundle(root: Path) -> CheckResult:
     compose = root / "docker" / "docker-compose.hackathon-demo.yaml"
     env_example = root / "docker" / "hackathon-demo.env.example"
     smoke = root / "scripts" / "hackathon_demo_deploy_smoke.py"
+    launcher = root / "scripts" / "run_hackathon_demo.py"
     split_ui = root / "docs" / "split-ui-deployment.md"
     gitignore = root / ".gitignore"
-    required = [compose, env_example, smoke, split_ui, gitignore]
+    required = [compose, env_example, smoke, launcher, split_ui, gitignore]
     missing = [path.relative_to(root).as_posix() for path in required if not path.is_file()]
     if missing:
         return CheckResult("demo deploy bundle", False, "missing: " + ", ".join(missing))
@@ -267,6 +268,7 @@ def _check_demo_deploy_bundle(root: Path) -> CheckResult:
         "Hackathon Split Demo Bundle",
         "docker-compose.hackathon-demo.yaml",
         "hackathon_demo_deploy_smoke.py",
+        "run_hackathon_demo.py",
     ]
     required_gitignore_phrases = [
         "docker/hackathon-demo.env",
