@@ -28,6 +28,9 @@ uv run pytest tests/test_harness_boundary.py -q
 
 The packaging smoke test builds the wheel, installs it into a fresh virtual
 environment, and imports the public SDK from that installed artifact.
+It also runs `examples/harness-sdk-consumer/consumer.py` with `PYTHONPATH`
+cleared, which proves an external Python service can use the installed wheel
+without importing the Gateway or frontend source tree.
 
 ## SDK Quickstart
 

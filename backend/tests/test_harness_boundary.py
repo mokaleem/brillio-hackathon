@@ -8,6 +8,7 @@ This test scans all Python files in the harness package and fails if any
 """
 
 import ast
+import json
 import os
 import subprocess
 import tomllib
@@ -17,6 +18,8 @@ from pathlib import Path
 HARNESS_ROOT = Path(__file__).parent.parent / "packages" / "harness" / "deerflow"
 HARNESS_PACKAGE_ROOT = HARNESS_ROOT.parent
 BACKEND_ROOT = HARNESS_PACKAGE_ROOT.parent.parent
+REPO_ROOT = BACKEND_ROOT.parent
+SDK_CONSUMER = REPO_ROOT / "examples" / "harness-sdk-consumer" / "consumer.py"
 
 BANNED_PREFIXES = ("app.",)
 
@@ -77,6 +80,12 @@ def test_harness_package_readme_exists():
     readme = pyproject["project"]["readme"]
 
     assert (HARNESS_PACKAGE_ROOT / readme).is_file()
+
+
+def test_external_sdk_consumer_example_exists():
+    assert SDK_CONSUMER.is_file()
+    readme = SDK_CONSUMER.with_name("README.md")
+    assert "deerflow-harness" in readme.read_text(encoding="utf-8")
 
 
 def test_harness_public_api_exports_stable_sdk_surface():
@@ -143,3 +152,52 @@ assert callable(generate_pdf_report)
 
     env = {**os.environ, "PYTHONPATH": ""}
     _run([str(python), "-c", smoke], cwd=tmp_path, env=env)
+
+    external_manifest = tmp_path / "external-registry.json"
+    external_manifest.write_text(
+        """
+        {
+          "version": 1,
+          "extensions": [
+            {
+              "kind": "tool",
+              "name": "sdk-report",
+              "enabled": true,
+              "source": "registry",
+              "entrypoint": "company_tools.sdk:report",
+              "risk_level": "low"
+            },
+            {
+              "kind": "skill",
+              "name": "sdk-summary",
+              "enabled": true,
+              "source": "registry",
+              "entrypoint": "company_skills/sdk-summary",
+              "risk_level": "low"
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "consumer-output"
+    completed = _run(
+        [
+            str(python),
+            str(SDK_CONSUMER),
+            "--repo-root",
+            str(tmp_path),
+            "--manifest",
+            str(external_manifest),
+            "--output-dir",
+            str(output_dir),
+        ],
+        cwd=tmp_path,
+        env=env,
+    )
+    payload = json.loads(completed.stdout)
+    installed_from = Path(payload["installed_from"]).resolve()
+    assert str(installed_from).startswith(str(venv_dir.resolve()))
+    assert payload["enabled"] == ["tool:sdk-report", "skill:sdk-summary"]
+    assert [Path(path).suffix for path in payload["artifacts"]] == [".html", ".csv", ".pdf"]
+    assert all(Path(path).is_file() for path in payload["artifacts"])
