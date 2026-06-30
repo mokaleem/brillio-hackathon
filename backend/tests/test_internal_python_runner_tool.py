@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -38,6 +39,16 @@ def test_python_function_executes_env_allowlisted_function(monkeypatch) -> None:
     output = python_function.invoke({"entrypoint": "math:sqrt", "args_json": "[81]"})
 
     assert json.loads(output) == 9.0
+
+
+def test_python_function_allowlist_does_not_split_entrypoint_colon(monkeypatch) -> None:
+    python_function = _python_function_tool()
+    monkeypatch.setattr(os, "pathsep", ":")
+    monkeypatch.setenv("DEERFLOW_PYTHON_FUNCTION_ALLOWLIST", "math:sqrt")
+
+    output = python_function.invoke({"entrypoint": "math:sqrt", "args_json": "[16]"})
+
+    assert json.loads(output) == 4.0
 
 
 def test_python_function_rejects_unapproved_function(monkeypatch) -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any
 
 from langchain_core.tools import tool
@@ -16,7 +17,9 @@ MAX_RESULT_CHARS = 20000
 
 
 @tool("python_function")
-def python_function(entrypoint: str, args_json: str = "[]", kwargs_json: str = "{}") -> str:
+def python_function(
+    entrypoint: str, args_json: str = "[]", kwargs_json: str = "{}"
+) -> str:
     """Execute an allowlisted importable Python function with JSON arguments."""
     if entrypoint not in _allowed_entrypoints():
         raise ValueError(f"Python function '{entrypoint}' is not allowlisted.")
@@ -33,7 +36,7 @@ def python_function(entrypoint: str, args_json: str = "[]", kwargs_json: str = "
 def _allowed_entrypoints() -> set[str]:
     configured = {
         item.strip()
-        for item in os.getenv(ALLOWLIST_ENV, "").replace(os.pathsep, ",").split(",")
+        for item in re.split(r"[,;]", os.getenv(ALLOWLIST_ENV, ""))
         if item.strip()
     }
     return DEFAULT_ALLOWED_ENTRYPOINTS | configured
