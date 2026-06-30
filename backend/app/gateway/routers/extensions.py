@@ -261,6 +261,7 @@ def _catalog_response(extensions: list[Any]) -> ExtensionsListResponse:
 
 
 def _set_extension_enabled(paths: list[Path], *, kind: ExtensionKind, name: str, enabled: bool) -> dict[str, Any]:
+    extension_state = _extension_state(paths)
     for path in paths:
         if not path.is_file():
             continue
@@ -273,12 +274,65 @@ def _set_extension_enabled(paths: list[Path], *, kind: ExtensionKind, name: str,
             if not isinstance(extension, dict):
                 continue
             if extension.get("kind") == kind.value and extension.get("name") == name:
+                if enabled:
+                    _validate_extension_dependencies(extension, extension_state)
                 extension["enabled"] = enabled
                 with path.open("w", encoding="utf-8") as handle:
                     json.dump(payload, handle, indent=2)
                     handle.write("\n")
                 return extension
     raise HTTPException(status_code=404, detail=f"Extension '{kind.value}/{name}' was not found.")
+
+
+def _extension_state(paths: list[Path]) -> dict[str, list[dict[str, Any]]]:
+    by_name: dict[str, list[dict[str, Any]]] = {}
+    for path in paths:
+        if not path.is_file():
+            continue
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        extensions = payload.get("extensions")
+        if not isinstance(extensions, list):
+            continue
+        for extension in extensions:
+            if not isinstance(extension, dict):
+                continue
+            name = extension.get("name")
+            kind = extension.get("kind")
+            if not isinstance(name, str) or not isinstance(kind, str):
+                continue
+            by_name.setdefault(name, []).append(extension)
+            by_name.setdefault(f"{kind}:{name}", []).append(extension)
+    return by_name
+
+
+def _validate_extension_dependencies(extension: dict[str, Any], extension_state: dict[str, list[dict[str, Any]]]) -> None:
+    requirements = extension.get("requires")
+    if not isinstance(requirements, list):
+        return
+
+    missing: list[str] = []
+    disabled: list[str] = []
+    for requirement in requirements:
+        if not isinstance(requirement, str):
+            continue
+        candidates = extension_state.get(requirement, [])
+        if not candidates:
+            missing.append(requirement)
+        elif not any(candidate.get("enabled") is True for candidate in candidates):
+            disabled.append(requirement)
+
+    problems = []
+    if missing:
+        problems.append(f"missing: {', '.join(missing)}")
+    if disabled:
+        problems.append(f"disabled: {', '.join(disabled)}")
+    if problems:
+        name = extension.get("name", "extension")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot enable extension '{name}' until required capabilities are available ({'; '.join(problems)}).",
+        )
 
 
 def _parse_import_manifest(manifest_json: str) -> tuple[ExtensionManifest | None, list[str]]:

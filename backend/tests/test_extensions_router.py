@@ -239,6 +239,47 @@ def test_extensions_update_enabled_writes_manifest(monkeypatch, tmp_path: Path) 
     assert list_response.json()["extensions"][0]["enabled"] is True
 
 
+def test_extensions_update_enabled_requires_enabled_dependencies(monkeypatch, tmp_path: Path) -> None:
+    manifest_path = tmp_path / "extensions.json"
+    manifest_path.write_text(
+        """
+        {
+          "version": 1,
+          "extensions": [
+            {
+              "kind": "tool",
+              "name": "html-report",
+              "enabled": false,
+              "source": "local",
+              "entrypoint": "internal_tools.reports:html"
+            },
+            {
+              "kind": "agent",
+              "name": "analyst-agent",
+              "enabled": false,
+              "source": "local",
+              "entrypoint": "internal_agents.analyst:create_agent",
+              "requires": ["html-report"]
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
+
+    with TestClient(_make_admin_app()) as client:
+        blocked = client.put("/api/extensions/agent/analyst-agent", json={"enabled": True})
+        dependency = client.put("/api/extensions/tool/html-report", json={"enabled": True})
+        enabled = client.put("/api/extensions/agent/analyst-agent", json={"enabled": True})
+
+    assert blocked.status_code == 409
+    assert "disabled: html-report" in blocked.json()["detail"]
+    assert dependency.status_code == 200
+    assert enabled.status_code == 200
+    assert enabled.json()["extension"]["enabled"] is True
+
+
 def test_extensions_import_preview_returns_external_manifest(monkeypatch, tmp_path: Path) -> None:
     base_manifest = tmp_path / "registries" / "internal_extensions.example.json"
     base_manifest.parent.mkdir()
