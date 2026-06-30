@@ -1,6 +1,6 @@
 # DeerFlow - Unified Development Environment
 
-.PHONY: help config demo-config demo-smoke production-readiness config-upgrade check install setup doctor detect-thread-boundaries detect-blocking-io dev dev-daemon start start-daemon stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway
+.PHONY: help config demo-config demo-smoke release-smoke production-readiness config-upgrade check install setup doctor detect-thread-boundaries detect-blocking-io dev dev-daemon start start-daemon stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway
 
 BASH ?= bash
 BACKEND_UV_RUN = cd backend && uv run
@@ -23,6 +23,7 @@ help:
 	@echo "  make config          - Generate local config files (aborts if config already exists)"
 	@echo "  make demo-config     - Generate minimal local hackathon demo config"
 	@echo "  make demo-smoke      - Validate demo registry and generate sample artifacts"
+	@echo "  make release-smoke   - Run backend/frontend/e2e hackathon release gate"
 	@echo "  make production-readiness - Validate production/demo readiness guardrails"
 	@echo "  make config-upgrade  - Merge new fields from config.example.yaml into config.yaml"
 	@echo "  make check           - Check if all required tools are installed"
@@ -70,6 +71,9 @@ demo-config:
 
 demo-smoke:
 	@$(BACKEND_UV_RUN) python ../scripts/demo_smoke.py
+
+release-smoke:
+	@$(PYTHON) ./scripts/release_smoke.py
 
 production-readiness:
 	@$(BACKEND_UV_RUN) python ../scripts/production_readiness.py

@@ -36,6 +36,8 @@ Body:
 
 ## Verification
 
+- Full release gate: `make release-smoke`
+- Fast release gate without Chromium E2E: `python scripts/release_smoke.py --skip-e2e`
 - `uv run pytest tests/test_audit_router.py -q`
 - `uv run pytest tests/test_extensions_router.py -q`
 - `uv run ruff check app\gateway\routers\audit.py app\gateway\routers\extensions.py app\gateway\app.py app\gateway\routers\__init__.py tests\test_audit_router.py tests\test_extensions_router.py`
