@@ -334,6 +334,20 @@ function mockExtensionRegistryAPI(page: Page) {
       });
     }
 
+    if (
+      request.method() === "DELETE" &&
+      pathname === "/api/extensions/imported/tool/forecast-export"
+    ) {
+      extensions = extensions.filter(
+        (extension) =>
+          `${extension.kind}:${extension.name}` !== "tool:forecast-export",
+      );
+      return fulfillJson(route, {
+        count: extensions.length,
+        extensions,
+      });
+    }
+
     if (request.method() === "POST" && pathname === "/api/extensions/reload") {
       return fulfillJson(route, {
         count: extensions.length,
@@ -531,6 +545,12 @@ test.describe("Hackathon demo flow", () => {
     ).toBeVisible();
     await expect(page.getByText(/from finance-demo/)).toBeVisible();
     await expect(page.getByText(/0123456789ab/)).toBeVisible();
+
+    const forecastRow = page
+      .getByRole("listitem")
+      .filter({ has: page.getByText("forecast-export", { exact: true }) });
+    await forecastRow.getByRole("button", { name: "Remove import" }).click();
+    await expect(page.getByText("Forecast Export", { exact: true })).toBeHidden();
 
     await page.goto("/workspace/chats/new");
 

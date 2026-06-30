@@ -244,6 +244,7 @@ def test_extensions_import_preview_returns_external_manifest(monkeypatch, tmp_pa
     base_manifest.parent.mkdir()
     base_manifest.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
     monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(base_manifest))
 
     manifest_json = """
     {
@@ -290,6 +291,7 @@ def test_extensions_import_preview_rejects_oversized_manifest(monkeypatch, tmp_p
     base_manifest.parent.mkdir()
     base_manifest.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
     monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(base_manifest))
     monkeypatch.setenv("DEERFLOW_EXTENSION_IMPORT_MAX_BYTES", "64")
 
     manifest_json = '{"version": 1, "extensions": [], "metadata": {"padding": "' + ("x" * 128) + '"}}'
@@ -308,6 +310,7 @@ def test_extensions_import_preview_rejects_too_many_descriptors(monkeypatch, tmp
     base_manifest.parent.mkdir()
     base_manifest.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
     monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(base_manifest))
     monkeypatch.setenv("DEERFLOW_EXTENSION_IMPORT_MAX_EXTENSIONS", "1")
 
     manifest_json = """
@@ -348,6 +351,7 @@ def test_extensions_import_preview_blocks_dangerous_entrypoints(monkeypatch, tmp
     base_manifest.parent.mkdir()
     base_manifest.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
     monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(base_manifest))
 
     manifest_json = """
     {
@@ -396,6 +400,7 @@ def test_extensions_import_preview_reports_duplicates(monkeypatch, tmp_path: Pat
         encoding="utf-8",
     )
     monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(base_manifest))
 
     manifest_json = """
     {
@@ -430,6 +435,7 @@ def test_extensions_import_selected_descriptors(monkeypatch, tmp_path: Path) -> 
     base_manifest.parent.mkdir()
     base_manifest.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
     monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(base_manifest))
 
     manifest_json = """
     {
@@ -480,11 +486,90 @@ def test_extensions_import_selected_descriptors(monkeypatch, tmp_path: Path) -> 
     assert provenance["descriptor_hash"] in persisted
 
 
+def test_extensions_remove_imported_descriptor(monkeypatch, tmp_path: Path) -> None:
+    base_manifest = tmp_path / "registries" / "internal_extensions.example.json"
+    imported_manifest = tmp_path / "registries" / "imported_extensions.json"
+    base_manifest.parent.mkdir()
+    base_manifest.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
+    imported_manifest.write_text(
+        """
+        {
+          "version": 1,
+          "extensions": [
+            {
+              "kind": "tool",
+              "name": "forecast-export",
+              "enabled": true,
+              "source": "registry",
+              "entrypoint": "company_tools.forecast:export",
+              "provenance": {
+                "imported_at": "2026-06-29T16:00:00Z",
+                "descriptor_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                "registry_version": 1,
+                "source_name": "forecast-demo"
+              }
+            },
+            {
+              "kind": "skill",
+              "name": "forecast-review",
+              "enabled": true,
+              "source": "registry",
+              "entrypoint": "internal_skills/forecast-review"
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(base_manifest))
+
+    with TestClient(_make_admin_app()) as client:
+        response = client.delete("/api/extensions/imported/tool/forecast-export")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [extension["name"] for extension in payload["extensions"]] == ["forecast-review"]
+    persisted = imported_manifest.read_text(encoding="utf-8")
+    assert "forecast-export" not in persisted
+    assert "forecast-review" in persisted
+
+
+def test_extensions_remove_imported_descriptor_returns_404_for_base_manifest(monkeypatch, tmp_path: Path) -> None:
+    base_manifest = tmp_path / "registries" / "internal_extensions.example.json"
+    base_manifest.parent.mkdir()
+    base_manifest.write_text(
+        """
+        {
+          "version": 1,
+          "extensions": [
+            {
+              "kind": "tool",
+              "name": "html-report",
+              "enabled": true,
+              "source": "local",
+              "entrypoint": "internal_tools.reporting:html_report"
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(base_manifest))
+
+    with TestClient(_make_admin_app()) as client:
+        response = client.delete("/api/extensions/imported/tool/html-report")
+
+    assert response.status_code == 404
+
+
 def test_extensions_import_blocks_dangerous_selected_entrypoint(monkeypatch, tmp_path: Path) -> None:
     base_manifest = tmp_path / "registries" / "internal_extensions.example.json"
     base_manifest.parent.mkdir()
     base_manifest.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
     monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(base_manifest))
 
     manifest_json = """
     {

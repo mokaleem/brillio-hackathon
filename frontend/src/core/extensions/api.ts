@@ -126,6 +126,18 @@ export async function commitExtensionImport(
   });
 }
 
+export async function removeImportedExtension(
+  kind: ExtensionKind,
+  name: string,
+): Promise<ExtensionsResponse> {
+  return requestExtensions(
+    `/api/extensions/imported/${kind}/${encodeURIComponent(name)}`,
+    {
+      method: "DELETE",
+    },
+  );
+}
+
 async function requestExtensions(
   path: string,
   init?: RequestInit,

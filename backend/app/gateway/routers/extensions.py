@@ -223,6 +223,15 @@ async def import_extensions(request: Request, body: ExtensionImportRequest) -> E
     return _catalog_response(catalog.all())
 
 
+@router.delete("/extensions/imported/{kind}/{name}", response_model=ExtensionsListResponse)
+async def remove_imported_extension(request: Request, kind: ExtensionKind, name: str) -> ExtensionsListResponse:
+    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
+    repo_root = _repo_root()
+    _remove_imported_extension(repo_root, kind=kind, name=name)
+    catalog = load_extension_catalog(_manifest_paths(repo_root), repo_root=repo_root)
+    return _catalog_response(catalog.all())
+
+
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[4]
 
@@ -418,6 +427,25 @@ def _append_imported_extensions(repo_root: Path, *, manifest: ExtensionManifest,
             import_keys.add(key)
 
     output = imported_manifest.model_copy(update={"imports": next_imports, "extensions": next_extensions})
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(output.model_dump(mode="json", exclude_none=True), handle, indent=2)
+        handle.write("\n")
+
+
+def _remove_imported_extension(repo_root: Path, *, kind: ExtensionKind, name: str) -> None:
+    path = repo_root / _IMPORTED_EXTENSION_MANIFEST
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail=f"Imported extension '{kind.value}/{name}' was not found.")
+
+    with path.open("r", encoding="utf-8") as handle:
+        imported_manifest = ExtensionManifest.model_validate(json.load(handle))
+
+    key = f"{kind.value}:{name}"
+    next_extensions = [extension for extension in imported_manifest.extensions if _extension_key(extension) != key]
+    if len(next_extensions) == len(imported_manifest.extensions):
+        raise HTTPException(status_code=404, detail=f"Imported extension '{kind.value}/{name}' was not found.")
+
+    output = imported_manifest.model_copy(update={"extensions": next_extensions})
     with path.open("w", encoding="utf-8") as handle:
         json.dump(output.model_dump(mode="json", exclude_none=True), handle, indent=2)
         handle.write("\n")

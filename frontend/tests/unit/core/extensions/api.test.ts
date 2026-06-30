@@ -15,6 +15,7 @@ import {
   commitExtensionImport,
   previewExtensionImport,
   reloadExtensions,
+  removeImportedExtension,
   updateExtensionEnabled,
   validateExtensions,
 } from "@/core/extensions/api";
@@ -223,5 +224,20 @@ describe("extension management api", () => {
         selected: ["tool:csv-export"],
       }),
     });
+  });
+
+  test("removeImportedExtension deletes an imported descriptor", async () => {
+    mockedFetch.mockResolvedValueOnce(
+      jsonResponse(200, { count: 0, extensions: [] }),
+    );
+
+    await removeImportedExtension("tool", "forecast-export");
+
+    expect(mockedFetch).toHaveBeenCalledWith(
+      "/api/extensions/imported/tool/forecast-export",
+      {
+        method: "DELETE",
+      },
+    );
   });
 });

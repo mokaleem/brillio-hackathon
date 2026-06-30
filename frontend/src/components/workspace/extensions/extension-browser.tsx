@@ -51,6 +51,7 @@ import {
   loadExtensions,
   previewExtensionImport,
   reloadExtensions,
+  removeImportedExtension,
   updateExtensionEnabled,
   validateExtensions,
 } from "@/core/extensions/api";
@@ -137,6 +138,7 @@ export function ExtensionBrowser() {
   const [query, setQuery] = useState("");
   const [importOpen, setImportOpen] = useState(false);
   const [pendingToggle, setPendingToggle] = useState<string | null>(null);
+  const [pendingRemove, setPendingRemove] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const extensionsQuery = useQuery({
@@ -224,6 +226,24 @@ export function ExtensionBrowser() {
       toast.error(error instanceof Error ? error.message : String(error));
     },
     onSettled: () => setPendingToggle(null),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: async (extension: ExtensionDescriptor) => {
+      setPendingRemove(extensionKey(extension));
+      return removeImportedExtension(extension.kind, extension.name);
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData<ExtensionsResponse>(EXTENSION_QUERY_KEY, data);
+      void queryClient.invalidateQueries({
+        queryKey: EXTENSION_HEALTH_QUERY_KEY,
+      });
+      toast.success("Imported capability removed");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : String(error));
+    },
+    onSettled: () => setPendingRemove(null),
   });
 
   return (
@@ -386,7 +406,9 @@ export function ExtensionBrowser() {
                   key={extensionKey(extension)}
                   extension={extension}
                   pending={pendingToggle === extensionKey(extension)}
+                  removing={pendingRemove === extensionKey(extension)}
                   onToggle={() => toggleMutation.mutate(extension)}
+                  onRemove={() => removeMutation.mutate(extension)}
                 />
               ))}
             </ul>
@@ -1091,11 +1113,15 @@ function HealthMessage({
 function ExtensionRow({
   extension,
   pending,
+  removing,
   onToggle,
+  onRemove,
 }: {
   extension: ExtensionDescriptor;
   pending: boolean;
+  removing: boolean;
   onToggle: () => void;
+  onRemove: () => void;
 }) {
   const Icon = kindIcon[extension.kind];
   const title = extension.display_name ?? extension.name;
@@ -1204,10 +1230,20 @@ function ExtensionRow({
         </Badge>
         <Switch
           checked={extension.enabled}
-          disabled={pending}
+          disabled={pending || removing}
           onCheckedChange={onToggle}
           aria-label={`${extension.enabled ? "Disable" : "Enable"} ${title}`}
         />
+        {extension.provenance && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={removing}
+            onClick={onRemove}
+          >
+            Remove import
+          </Button>
+        )}
       </div>
     </li>
   );
