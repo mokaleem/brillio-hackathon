@@ -3,8 +3,8 @@
 Date: 2026-06-30
 Branch: `dev`
 Pull request: https://github.com/mokaleem/brillio-hackathon/pull/1
-Head commit: `ebba959e`
-Status: Draft PR, mergeable, Hackathon Quality Gate green.
+Head branch: `dev`
+Status: Draft PR, mergeable; mark ready after the latest `Hackathon Quality Gate` run is green.
 
 This package is the ready-to-share PR and release brief for the internal DeerFlow assistant demo. It is scoped to the configurable harness, dynamic capability registry, separated UI layer, and hackathon judge path.
 
@@ -43,7 +43,7 @@ Body:
 
 - Full release gate: `make release-smoke`
 - Fast release gate without Chromium E2E: `python scripts/release_smoke.py --skip-e2e`
-- GitHub Actions `Hackathon Quality Gate` on `ebba959e`: `Backend Readiness`, `Frontend Quality`, and `Demo E2E` passed.
+- GitHub Actions `Hackathon Quality Gate`: `Backend Readiness`, `Frontend Quality`, and `Demo E2E` pass on the release branch before marking ready.
 - `uv run pytest tests/test_audit_router.py -q`
 - `uv run pytest tests/test_extensions_router.py -q`
 - `uv run ruff format --check .`
