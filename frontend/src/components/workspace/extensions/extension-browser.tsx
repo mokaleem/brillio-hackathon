@@ -79,6 +79,7 @@ const EXTENSION_QUERY_KEY = ["extensions", "catalog"] as const;
 const EXTENSION_HEALTH_QUERY_KEY = ["extensions", "health"] as const;
 const EXTENSION_AUDIT_QUERY_KEY = ["extensions", "audit"] as const;
 const EMPTY_EXTENSIONS: ExtensionDescriptor[] = [];
+const EMPTY_AUDIT_RECORDS: AuditExecutionRecord[] = [];
 const IMPORT_MANIFEST_MAX_BYTES = 512 * 1024;
 const SAMPLE_REGISTRY_JSON = JSON.stringify(
   {
@@ -164,6 +165,7 @@ export function ExtensionBrowser() {
     () => filterExtensions(extensions, { kind, status, query }),
     [extensions, kind, query, status],
   );
+  const auditRecords = auditQuery.data?.records ?? EMPTY_AUDIT_RECORDS;
 
   const reloadMutation = useMutation({
     mutationFn: () => reloadExtensions(kind === "all" ? undefined : { kind }),
@@ -301,6 +303,15 @@ export function ExtensionBrowser() {
         }}
       />
 
+      <DemoObservabilityPanel
+        extensions={extensions}
+        health={healthQuery.data}
+        records={auditRecords}
+        isLoading={
+          extensionsQuery.isLoading || healthQuery.isLoading || auditQuery.isLoading
+        }
+      />
+
       <section className="grid gap-3 border-b px-6 py-4 sm:grid-cols-2 lg:grid-cols-5">
         <SummaryMetric label="Total" value={summary.total} />
         <SummaryMetric label="Enabled" value={summary.enabled} />
@@ -325,7 +336,7 @@ export function ExtensionBrowser() {
       />
 
       <ExecutionAuditPanel
-        records={auditQuery.data?.records ?? []}
+        records={auditRecords}
         isLoading={auditQuery.isLoading}
         error={auditQuery.error instanceof Error ? auditQuery.error.message : null}
         path={auditQuery.data?.path ?? ""}
@@ -415,6 +426,108 @@ export function ExtensionBrowser() {
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+function DemoObservabilityPanel({
+  extensions,
+  health,
+  records,
+  isLoading,
+}: {
+  extensions: ExtensionDescriptor[];
+  health: ExtensionHealthResponse | undefined;
+  records: AuditExecutionRecord[];
+  isLoading: boolean;
+}) {
+  const activeCount = extensions.filter((extension) => extension.enabled).length;
+  const registryCount = extensions.filter(isExternalSource).length;
+  const failureCount = records.filter((record) => record.status === "error").length;
+  const artifactCount = new Set(records.flatMap((record) => record.artifacts))
+    .size;
+  const highRiskEnabled = extensions.filter(
+    (extension) => extension.enabled && extension.risk_level === "high",
+  ).length;
+  const readiness = getDemoReadinessLabel({
+    health,
+    activeCount,
+    failureCount,
+  });
+
+  return (
+    <section className="border-b px-6 py-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <ActivityIcon className="text-muted-foreground size-4" />
+          <h2 className="text-sm font-semibold">Demo Observability</h2>
+        </div>
+        <Badge
+          variant={
+            readiness.tone === "ready"
+              ? "default"
+              : readiness.tone === "attention"
+                ? "destructive"
+                : "secondary"
+          }
+        >
+          {readiness.label}
+        </Badge>
+      </div>
+      {isLoading ? (
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <Skeleton key={index} className="h-20" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+          <ObservabilityMetric label="Active" value={activeCount} />
+          <ObservabilityMetric label="Executions" value={records.length} />
+          <ObservabilityMetric
+            label="Failures"
+            value={failureCount}
+            tone={failureCount > 0 ? "attention" : "normal"}
+          />
+          <ObservabilityMetric label="Artifacts" value={artifactCount} />
+          <ObservabilityMetric label="Registry Sourced" value={registryCount} />
+          <ObservabilityMetric
+            label="High Risk On"
+            value={highRiskEnabled}
+            tone={highRiskEnabled > 0 ? "attention" : "normal"}
+          />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ObservabilityMetric({
+  label,
+  value,
+  tone = "normal",
+}: {
+  label: string;
+  value: number;
+  tone?: "normal" | "attention";
+}) {
+  return (
+    <div
+      aria-label={`${label}: ${value}`}
+      className={cn(
+        "rounded-lg border px-3 py-3",
+        tone === "attention" && "border-destructive/40 bg-destructive/5",
+      )}
+    >
+      <div className="text-muted-foreground text-xs font-medium">{label}</div>
+      <div
+        className={cn(
+          "mt-1 font-mono text-2xl leading-none font-semibold",
+          tone === "attention" && "text-destructive",
+        )}
+      >
+        {value}
+      </div>
     </div>
   );
 }
@@ -1364,6 +1477,24 @@ function formatSummary(summary: Record<string, unknown>) {
   const size = typeof summary.size === "number" ? `:${summary.size}` : "";
   const length = typeof summary.length === "number" ? `:${summary.length}` : "";
   return `${type}${size || length}`;
+}
+
+function getDemoReadinessLabel({
+  health,
+  activeCount,
+  failureCount,
+}: {
+  health: ExtensionHealthResponse | undefined;
+  activeCount: number;
+  failureCount: number;
+}) {
+  if (health?.valid === false || failureCount > 0) {
+    return { label: "Needs Attention", tone: "attention" as const };
+  }
+  if (health?.valid && activeCount > 0) {
+    return { label: "Demo Ready", tone: "ready" as const };
+  }
+  return { label: "Warming Up", tone: "warming" as const };
 }
 
 function formatProvenanceSource(extension: ExtensionDescriptor) {

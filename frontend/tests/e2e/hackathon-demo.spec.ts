@@ -490,6 +490,14 @@ test.describe("Hackathon demo flow", () => {
     await expect(
       page.getByRole("heading", { name: "Execution Audit" }),
     ).toBeVisible();
+    const observability = page.locator("section").filter({
+      has: page.getByRole("heading", { name: "Demo Observability" }),
+    });
+    await expect(observability.getByText("Needs Attention")).toBeVisible();
+    await expect(observability.getByLabel("Active: 6")).toBeVisible();
+    await expect(observability.getByLabel("Executions: 2")).toBeVisible();
+    await expect(observability.getByLabel("Failures: 1")).toBeVisible();
+    await expect(observability.getByLabel("Artifacts: 1")).toBeVisible();
     await expect(page.getByText("hackathon-readiness.html")).toBeVisible();
     await expect(page.getByText("Function not allowlisted")).toBeVisible();
 
