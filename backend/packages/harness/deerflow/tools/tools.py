@@ -4,7 +4,7 @@ from langchain.tools import BaseTool
 
 from deerflow.config import get_app_config
 from deerflow.config.app_config import AppConfig
-from deerflow.extensions import ExtensionDescriptor, ExtensionKind, load_runtime_extension_catalog, materialize_tool
+from deerflow.extensions import ExtensionDescriptor, ExtensionKind, ExtensionPermissionError, load_runtime_extension_catalog, materialize_tool
 from deerflow.reflection import resolve_variable
 from deerflow.sandbox.security import is_host_bash_allowed
 from deerflow.tools.builtins import ask_clarification_tool, present_file_tool, task_tool, view_image_tool
@@ -100,13 +100,13 @@ def get_available_tools(
     registry_tools: list[BaseTool] = []
     try:
         catalog = load_runtime_extension_catalog()
-        registry_tool_extensions = [
-            extension
-            for extension in catalog.enabled(kind=ExtensionKind.TOOL)
-            if _extension_tool_in_groups(extension, groups)
-        ]
+        registry_tool_extensions = [extension for extension in catalog.enabled(kind=ExtensionKind.TOOL) if _extension_tool_in_groups(extension, groups)]
         for extension in registry_tool_extensions:
-            tool = _ensure_sync_invocable_tool(materialize_tool(extension))
+            try:
+                tool = _ensure_sync_invocable_tool(materialize_tool(extension))
+            except ExtensionPermissionError as exc:
+                logger.warning("Registry tool %s blocked by runtime extension policy: %s", extension.name, exc)
+                continue
             if extension.name != tool.name:
                 logger.warning(
                     "Registry tool name mismatch: descriptor name %r does not match tool .name %r (entrypoint: %s). The tool's own .name will be used for binding.",

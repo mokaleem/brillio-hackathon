@@ -49,6 +49,109 @@ class AgentConfig(BaseModel):
     skills: list[str] | None = None
 
 
+def _get_registry_agent_descriptor(name: str):
+    try:
+        from deerflow.extensions import ExtensionKind, load_runtime_extension_catalog
+
+        catalog = load_runtime_extension_catalog()
+    except Exception:
+        logger.exception("Failed to load registry agents")
+        return None, None
+
+    for extension in catalog.enabled(kind=ExtensionKind.AGENT):
+        if extension.name == name:
+            return catalog, extension
+    return catalog, None
+
+
+def _agent_config_from_registry_descriptor(extension) -> AgentConfig:
+    metadata = extension.metadata or {}
+    config_data = metadata.get("config")
+    if not isinstance(config_data, dict):
+        config_data = {}
+
+    data: dict[str, Any] = {
+        "name": extension.name,
+        "description": config_data.get("description", extension.description),
+    }
+    for field in ("model", "tool_groups", "skills"):
+        value = config_data.get(field, metadata.get(field))
+        if value is not None:
+            data[field] = value
+    return AgentConfig(**data)
+
+
+def _load_registry_agent_config(name: str) -> AgentConfig | None:
+    _catalog, extension = _get_registry_agent_descriptor(name)
+    if extension is None:
+        return None
+    from deerflow.extensions import ExtensionPermissionError, require_extension_runtime_permission
+
+    try:
+        require_extension_runtime_permission(extension)
+    except ExtensionPermissionError as exc:
+        logger.warning("Registry agent %s blocked by runtime extension policy: %s", name, exc)
+        return None
+    return _agent_config_from_registry_descriptor(extension)
+
+
+def _load_registry_agent_soul(name: str) -> str | None:
+    catalog, extension = _get_registry_agent_descriptor(name)
+    if extension is None:
+        return None
+    from deerflow.extensions import ExtensionPermissionError, require_extension_runtime_permission
+
+    try:
+        require_extension_runtime_permission(extension)
+    except ExtensionPermissionError as exc:
+        logger.warning("Registry agent %s soul blocked by runtime extension policy: %s", name, exc)
+        return None
+
+    metadata = extension.metadata or {}
+    soul = metadata.get("soul")
+    if isinstance(soul, str):
+        return soul.strip() or None
+
+    soul_path = metadata.get("soul_path")
+    if isinstance(soul_path, str) and catalog is not None:
+        root = catalog.repo_root.resolve(strict=False)
+        target = (root / soul_path).resolve(strict=False)
+        try:
+            target.relative_to(root)
+        except ValueError:
+            logger.warning("Registry agent %s soul_path escapes repository root: %s", name, soul_path)
+            return None
+        try:
+            content = target.read_text(encoding="utf-8").strip()
+        except OSError:
+            logger.warning("Failed to read registry agent %s soul_path: %s", name, target, exc_info=True)
+            return None
+        return content or None
+
+    return None
+
+
+def _list_registry_agent_configs() -> list[AgentConfig]:
+    try:
+        from deerflow.extensions import ExtensionKind, load_runtime_extension_catalog
+
+        catalog = load_runtime_extension_catalog()
+    except Exception:
+        logger.exception("Failed to list registry agents")
+        return []
+    agents: list[AgentConfig] = []
+    for extension in catalog.enabled(kind=ExtensionKind.AGENT):
+        from deerflow.extensions import ExtensionPermissionError, require_extension_runtime_permission
+
+        try:
+            require_extension_runtime_permission(extension)
+        except ExtensionPermissionError as exc:
+            logger.warning("Registry agent %s blocked by runtime extension policy: %s", extension.name, exc)
+            continue
+        agents.append(_agent_config_from_registry_descriptor(extension))
+    return agents
+
+
 def resolve_agent_dir(name: str, *, user_id: str | None = None) -> Path:
     """Return the on-disk directory for an agent, preferring the per-user layout.
 
@@ -106,9 +209,15 @@ def load_agent_config(name: str | None, *, user_id: str | None = None) -> AgentC
     config_file = agent_dir / "config.yaml"
 
     if not agent_dir.exists():
+        registry_config = _load_registry_agent_config(name)
+        if registry_config is not None:
+            return registry_config
         raise FileNotFoundError(f"Agent directory not found: {agent_dir}")
 
     if not config_file.exists():
+        registry_config = _load_registry_agent_config(name)
+        if registry_config is not None:
+            return registry_config
         raise FileNotFoundError(f"Agent config not found: {config_file}")
 
     try:
@@ -148,9 +257,11 @@ def load_agent_soul(agent_name: str | None, *, user_id: str | None = None) -> st
         agent_dir = get_paths().base_dir
     soul_path = agent_dir / SOUL_FILENAME
     if not soul_path.exists():
-        return None
+        return _load_registry_agent_soul(agent_name) if agent_name else None
     content = soul_path.read_text(encoding="utf-8").strip()
-    return content or None
+    if content:
+        return content
+    return _load_registry_agent_soul(agent_name) if agent_name else None
 
 
 def list_custom_agents(*, user_id: str | None = None) -> list[AgentConfig]:
@@ -197,6 +308,12 @@ def list_custom_agents(*, user_id: str | None = None) -> list[AgentConfig]:
                 seen.add(entry.name)
             except Exception as e:
                 logger.warning(f"Skipping agent '{entry.name}': {e}")
+
+    for agent_cfg in _list_registry_agent_configs():
+        if agent_cfg.name in seen:
+            continue
+        agents.append(agent_cfg)
+        seen.add(agent_cfg.name)
 
     agents.sort(key=lambda a: a.name)
     return agents

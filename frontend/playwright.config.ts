@@ -25,7 +25,7 @@ export default defineConfig({
     command: "pnpm build && pnpm start",
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
+    timeout: 300_000,
     env: {
       SKIP_ENV_VALIDATION: "1",
       DEER_FLOW_AUTH_DISABLED: "1",

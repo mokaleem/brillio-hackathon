@@ -1,6 +1,7 @@
 """Unified extensions configuration for MCP servers and skills."""
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any, Literal
@@ -8,6 +9,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from deerflow.config.runtime_paths import existing_project_file
+
+logger = logging.getLogger(__name__)
 
 
 class McpOAuthConfig(BaseModel):
@@ -154,17 +157,58 @@ class ExtensionsConfig(BaseModel):
         resolved_path = cls.resolve_config_path(config_path)
         if resolved_path is None:
             # Return empty config if extensions config file is not found
-            return cls(mcp_servers={}, skills={})
+            return cls._with_registry_mcp_servers(cls(mcp_servers={}, skills={}))
 
         try:
             with open(resolved_path, encoding="utf-8") as f:
                 config_data = json.load(f)
             config_data = cls.resolve_env_variables(config_data)
-            return cls.model_validate(config_data)
+            return cls._with_registry_mcp_servers(cls.model_validate(config_data))
         except json.JSONDecodeError as e:
             raise ValueError(f"Extensions config file at {resolved_path} is not valid JSON: {e}") from e
         except Exception as e:
             raise RuntimeError(f"Failed to load extensions config from {resolved_path}: {e}") from e
+
+    @classmethod
+    def _with_registry_mcp_servers(cls, config: "ExtensionsConfig") -> "ExtensionsConfig":
+        """Merge enabled registry MCP descriptors into the extensions config.
+
+        Explicit entries in extensions_config.json take precedence over registry
+        descriptors so local operators can override or disable registry-provided
+        defaults without editing shared manifests.
+        """
+        try:
+            from deerflow.extensions import (
+                ExtensionKind,
+                load_runtime_extension_catalog,
+                materialize_mcp_server_config,
+            )
+        except Exception:
+            logger.warning("Failed to import runtime extension registry for MCP merge", exc_info=True)
+            return config
+
+        try:
+            catalog = load_runtime_extension_catalog()
+        except Exception:
+            logger.warning("Failed to load runtime extension registry for MCP merge", exc_info=True)
+            return config
+
+        merged = dict(config.mcp_servers)
+        changed = False
+        for extension in catalog.enabled(kind=ExtensionKind.MCP):
+            if extension.name in merged:
+                continue
+            try:
+                server = materialize_mcp_server_config(extension)
+                server_data = cls.resolve_env_variables(server.model_dump())
+                merged[extension.name] = McpServerConfig.model_validate(server_data)
+                changed = True
+            except Exception:
+                logger.warning("Skipping registry MCP server '%s'", extension.name, exc_info=True)
+
+        if not changed:
+            return config
+        return config.model_copy(update={"mcp_servers": merged})
 
     @classmethod
     def resolve_env_variables(cls, config: Any) -> Any:

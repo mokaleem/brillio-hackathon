@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+from pathlib import Path
 
 from langchain_core.tools import BaseTool
 
@@ -11,43 +12,52 @@ logger = logging.getLogger(__name__)
 _mcp_tools_cache: list[BaseTool] | None = None
 _cache_initialized = False
 _initialization_lock = asyncio.Lock()
-_config_mtime: float | None = None  # Track config file modification time
+_ConfigSignature = tuple[tuple[str, float | None], ...]
+_config_signature: _ConfigSignature | None = None
 
 
-def _get_config_mtime() -> float | None:
-    """Get the modification time of the extensions config file.
+def _get_config_signature() -> _ConfigSignature:
+    """Get the modification signature for MCP config inputs.
 
     Returns:
-        The modification time as a float, or None if the file doesn't exist.
+        Stable path/mtime pairs for the extensions config and registry manifests.
     """
     from deerflow.config.extensions_config import ExtensionsConfig
+    from deerflow.extensions import get_runtime_extension_manifest_paths
 
+    paths: list[Path] = []
     config_path = ExtensionsConfig.resolve_config_path()
-    if config_path and config_path.exists():
-        return os.path.getmtime(config_path)
-    return None
+    if config_path is not None:
+        paths.append(config_path)
+    paths.extend(get_runtime_extension_manifest_paths())
+
+    signature: list[tuple[str, float | None]] = []
+    for path in paths:
+        resolved = path.resolve(strict=False)
+        mtime = os.path.getmtime(resolved) if resolved.exists() else None
+        signature.append((str(resolved), mtime))
+    return tuple(signature)
 
 
 def _is_cache_stale() -> bool:
-    """Check if the cache is stale due to config file changes.
+    """Check if the cache is stale due to config input changes.
 
     Returns:
         True if the cache should be invalidated, False otherwise.
     """
-    global _config_mtime
+    global _config_signature
 
     if not _cache_initialized:
         return False  # Not initialized yet, not stale
 
-    current_mtime = _get_config_mtime()
+    current_signature = _get_config_signature()
 
-    # If we couldn't get mtime before or now, assume not stale
-    if _config_mtime is None or current_mtime is None:
-        return False
-
-    # If the config file has been modified since we cached, it's stale
-    if current_mtime > _config_mtime:
-        logger.info(f"MCP config file has been modified (mtime: {_config_mtime} -> {current_mtime}), cache is stale")
+    if _config_signature != current_signature:
+        logger.info(
+            "MCP config inputs have changed (signature: %s -> %s), cache is stale",
+            _config_signature,
+            current_signature,
+        )
         return True
 
     return False
@@ -61,7 +71,7 @@ async def initialize_mcp_tools() -> list[BaseTool]:
     Returns:
         List of LangChain tools from all enabled MCP servers.
     """
-    global _mcp_tools_cache, _cache_initialized, _config_mtime
+    global _mcp_tools_cache, _cache_initialized, _config_signature
 
     async with _initialization_lock:
         if _cache_initialized:
@@ -73,8 +83,12 @@ async def initialize_mcp_tools() -> list[BaseTool]:
         logger.info("Initializing MCP tools...")
         _mcp_tools_cache = await get_mcp_tools()
         _cache_initialized = True
-        _config_mtime = _get_config_mtime()  # Record config file mtime
-        logger.info(f"MCP tools initialized: {len(_mcp_tools_cache)} tool(s) loaded (config mtime: {_config_mtime})")
+        _config_signature = _get_config_signature()
+        logger.info(
+            "MCP tools initialized: %s tool(s) loaded (config signature: %s)",
+            len(_mcp_tools_cache),
+            _config_signature,
+        )
 
         return _mcp_tools_cache
 
@@ -136,10 +150,10 @@ def reset_mcp_tools_cache() -> None:
     Also closes all persistent MCP sessions so they are recreated on
     the next tool load.
     """
-    global _mcp_tools_cache, _cache_initialized, _config_mtime
+    global _mcp_tools_cache, _cache_initialized, _config_signature
     _mcp_tools_cache = None
     _cache_initialized = False
-    _config_mtime = None
+    _config_signature = None
 
     # Close persistent sessions – they will be recreated by the next
     # get_mcp_tools() call with the (possibly updated) connection config.

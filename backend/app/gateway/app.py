@@ -15,6 +15,7 @@ from app.gateway.routers import (
     agents,
     artifacts,
     assistants_compat,
+    audit,
     auth,
     channel_connections,
     channels,
@@ -394,6 +395,9 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # Extensions API is mounted at /api/extensions
     app.include_router(extensions.router)
+
+    # Audit API is mounted at /api/audit
+    app.include_router(audit.router)
 
     # Suggestions API is mounted at /api/threads/{thread_id}/suggestions
     app.include_router(suggestions.router)

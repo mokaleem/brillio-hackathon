@@ -1,0 +1,135 @@
+name: Hackathon Quality Gate
+
+on:
+  push:
+    branches: ["dev", "main"]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+concurrency:
+  group: hackathon-quality-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend-readiness:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    name: Backend Readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Check backend lockfile
+        working-directory: backend
+        run: uv lock --check
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --group dev
+
+      - name: Run backend lint
+        working-directory: backend
+        run: make lint
+
+      - name: Run registry, journal, and harness SDK tests
+        working-directory: backend
+        run: uv run pytest tests/test_extensions_router.py tests/test_run_journal.py tests/test_harness_boundary.py -q
+
+      - name: Run production readiness check
+        working-directory: backend
+        run: uv run python ../scripts/production_readiness.py
+
+  frontend-quality:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    name: Frontend Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use pinned pnpm version
+        run: corepack prepare pnpm@10.26.2 --activate
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Run frontend lint
+        working-directory: frontend
+        run: pnpm lint
+
+      - name: Run frontend typecheck
+        working-directory: frontend
+        run: pnpm typecheck
+
+      - name: Run focused frontend unit tests
+        working-directory: frontend
+        run: pnpm test tests/unit/core/extensions/browser.test.ts tests/unit/core/extensions/api.test.ts tests/unit/core/threads/timeline.test.ts
+
+  demo-e2e:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    name: Demo E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use pinned pnpm version
+        run: corepack prepare pnpm@10.26.2 --activate
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: pnpm exec playwright install chromium --with-deps
+
+      - name: Run hackathon demo E2E
+        working-directory: frontend
+        run: pnpm test:e2e tests/e2e/hackathon-demo.spec.ts --project=chromium
+        env:
+          SKIP_ENV_VALIDATION: "1"
+          DEER_FLOW_AUTH_DISABLED: "1"
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: hackathon-demo-playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7

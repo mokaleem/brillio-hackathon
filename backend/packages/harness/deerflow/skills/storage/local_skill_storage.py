@@ -67,6 +67,8 @@ class LocalSkillStorage(SkillStorage):
         return (self._host_root / SkillCategory.PUBLIC.value / normalized_name / SKILL_MD_FILE).exists()
 
     def _iter_skill_files(self) -> Iterable[tuple[SkillCategory, Path, Path]]:
+        yield from self._iter_registry_skill_files()
+
         if not self._host_root.exists():
             return
         for category in SkillCategory:
@@ -78,6 +80,28 @@ class LocalSkillStorage(SkillStorage):
                 if SKILL_MD_FILE not in file_names:
                     continue
                 yield category, category_path, Path(current_root) / SKILL_MD_FILE
+
+    def _iter_registry_skill_files(self) -> Iterable[tuple[SkillCategory, Path, Path]]:
+        try:
+            from deerflow.extensions import ExtensionKind, load_runtime_extension_catalog, materialize_skill_path
+
+            catalog = load_runtime_extension_catalog()
+        except Exception:
+            logger.exception("Failed to load registry skills")
+            return
+
+        for extension in catalog.enabled(kind=ExtensionKind.SKILL):
+            try:
+                skill_dir = materialize_skill_path(extension, repo_root=catalog.repo_root)
+            except Exception:
+                logger.warning("Skipping registry skill %s: invalid entrypoint", extension.name, exc_info=True)
+                continue
+
+            skill_file = skill_dir / SKILL_MD_FILE
+            if not skill_file.is_file():
+                logger.warning("Skipping registry skill %s: missing %s", extension.name, skill_file)
+                continue
+            yield SkillCategory.PUBLIC, skill_dir.parent, skill_file
 
     def read_custom_skill(self, name: str) -> str:
         if not self.custom_skill_exists(name):

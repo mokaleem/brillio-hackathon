@@ -1,0 +1,84 @@
+# Hackathon split demo deployment.
+#
+# Runs only the browser UI and Gateway so the UI repository and harness/Gateway
+# runtime can be demonstrated as separate deployable units.
+#
+# Usage:
+#   docker compose -p deer-flow-demo \
+#     --env-file docker/hackathon-demo.env \
+#     -f docker/docker-compose.hackathon-demo.yaml up --build
+
+services:
+  frontend:
+    build:
+      context: ../
+      dockerfile: frontend/Dockerfile
+      target: prod
+      args:
+        PNPM_STORE_PATH: ${PNPM_STORE_PATH:-/root/.local/share/pnpm/store}
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
+    container_name: deer-flow-demo-frontend
+    environment:
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-hackathon-demo-change-me}
+      - DEER_FLOW_INTERNAL_GATEWAY_BASE_URL=http://gateway:8001
+      - DEER_FLOW_TRUSTED_ORIGINS=${DEER_FLOW_TRUSTED_ORIGINS:-http://localhost:3000}
+    ports:
+      - "${HACKATHON_FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - gateway
+    networks:
+      - deer-flow-demo
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: ../
+      dockerfile: backend/Dockerfile
+      args:
+        APT_MIRROR: ${APT_MIRROR:-}
+        UV_IMAGE: ${UV_IMAGE:-ghcr.io/astral-sh/uv:0.7.20}
+        UV_INDEX_URL: ${UV_INDEX_URL:-https://pypi.org/simple}
+        UV_EXTRAS: ${UV_EXTRAS:-}
+    container_name: deer-flow-demo-gateway
+    command: sh -c "cd backend && PYTHONPATH=. uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 --workers ${GATEWAY_WORKERS:-1}"
+    working_dir: /app
+    environment:
+      - CI=true
+      - GATEWAY_ENABLE_DOCS=${GATEWAY_ENABLE_DOCS:-true}
+      - GATEWAY_CORS_ORIGINS=${GATEWAY_CORS_ORIGINS:-http://localhost:3000}
+      - DEER_FLOW_AUTH_DISABLED=${DEER_FLOW_AUTH_DISABLED:-1}
+      - DEER_FLOW_PROJECT_ROOT=/app
+      - DEER_FLOW_HOME=/app/backend/.deer-flow
+      - DEER_FLOW_CONFIG_PATH=/app/backend/config.yaml
+      - DEER_FLOW_EXTENSIONS_CONFIG_PATH=/app/backend/extensions_config.json
+      - DEER_FLOW_CHANNELS_LANGGRAPH_URL=http://gateway:8001/api
+      - DEER_FLOW_CHANNELS_GATEWAY_URL=http://gateway:8001
+      - DEERFLOW_EXTENSION_MANIFESTS=${DEERFLOW_EXTENSION_MANIFESTS:-registries/demo_extensions.json}
+      - DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS=${DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS:-low,medium}
+      - DEERFLOW_PYTHON_FUNCTION_ALLOWLIST=${DEERFLOW_PYTHON_FUNCTION_ALLOWLIST:-internal_tools.python_examples:summarize_metrics}
+      - NO_PROXY=${NO_PROXY:-}${NO_PROXY:+,}localhost,127.0.0.1,::1,gateway,frontend,host.docker.internal
+      - no_proxy=${no_proxy:-}${no_proxy:+,}localhost,127.0.0.1,::1,gateway,frontend,host.docker.internal
+    volumes:
+      - ${DEER_FLOW_CONFIG_PATH:-../config.example.yaml}:/app/backend/config.yaml:ro
+      - ${DEER_FLOW_EXTENSIONS_CONFIG_PATH:-../extensions_config.example.json}:/app/backend/extensions_config.json:ro
+      - ../registries:/app/registries:ro
+      - ../internal_agents:/app/internal_agents:ro
+      - ../internal_mcps:/app/internal_mcps:ro
+      - ../internal_tools:/app/internal_tools:ro
+      - ../internal_skills:/app/internal_skills:ro
+      - ../skills:/app/skills:ro
+      - demo-home:/app/backend/.deer-flow
+    ports:
+      - "${HACKATHON_GATEWAY_PORT:-8001}:8001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - deer-flow-demo
+    restart: unless-stopped
+
+volumes:
+  demo-home:
+
+networks:
+  deer-flow-demo:
+    driver: bridge

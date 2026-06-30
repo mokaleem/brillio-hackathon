@@ -10,8 +10,12 @@ rs.mock("@/core/config", () => ({
 
 import { fetch as fetcher } from "@/core/api/fetcher";
 import {
+  loadExtensionHealth,
   loadExtensions,
+  commitExtensionImport,
+  previewExtensionImport,
   reloadExtensions,
+  removeImportedExtension,
   updateExtensionEnabled,
   validateExtensions,
 } from "@/core/extensions/api";
@@ -58,7 +62,9 @@ describe("loadExtensions", () => {
   });
 
   test("adds kind query when filtering", async () => {
-    mockedFetch.mockResolvedValueOnce(jsonResponse(200, { count: 0, extensions: [] }));
+    mockedFetch.mockResolvedValueOnce(
+      jsonResponse(200, { count: 0, extensions: [] }),
+    );
 
     await loadExtensions({ kind: "skill" });
 
@@ -88,20 +94,47 @@ describe("extension management api", () => {
       valid: true,
       count: 2,
       errors: [],
+      warnings: [],
     });
     expect(mockedFetch).toHaveBeenCalledWith("/api/extensions/validate", {
       method: "POST",
     });
   });
 
+  test("loadExtensionHealth reads registry health", async () => {
+    mockedFetch.mockResolvedValueOnce(
+      jsonResponse(200, {
+        valid: false,
+        count: 1,
+        manifests: ["/repo/registry.json"],
+        errors: ["bad MCP"],
+        warnings: ["missing prompt template"],
+      }),
+    );
+
+    await expect(loadExtensionHealth()).resolves.toEqual({
+      valid: false,
+      count: 1,
+      manifests: ["/repo/registry.json"],
+      errors: ["bad MCP"],
+      warnings: ["missing prompt template"],
+    });
+    expect(mockedFetch).toHaveBeenCalledWith("/api/extensions/health");
+  });
+
   test("reloadExtensions posts to the reload endpoint", async () => {
-    mockedFetch.mockResolvedValueOnce(jsonResponse(200, { count: 0, extensions: [] }));
+    mockedFetch.mockResolvedValueOnce(
+      jsonResponse(200, { count: 0, extensions: [] }),
+    );
 
     await reloadExtensions({ kind: "tool" });
 
-    expect(mockedFetch).toHaveBeenCalledWith("/api/extensions/reload?kind=tool", {
-      method: "POST",
-    });
+    expect(mockedFetch).toHaveBeenCalledWith(
+      "/api/extensions/reload?kind=tool",
+      {
+        method: "POST",
+      },
+    );
   });
 
   test("updateExtensionEnabled writes enabled state", async () => {
@@ -133,6 +166,77 @@ describe("extension management api", () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ enabled: true }),
+      },
+    );
+  });
+
+  test("previewExtensionImport posts manifest JSON", async () => {
+    mockedFetch.mockResolvedValueOnce(
+      jsonResponse(200, {
+        valid: true,
+        count: 1,
+        extensions: [{ kind: "tool", name: "csv-export" }],
+        errors: [],
+        warnings: [],
+        duplicates: [],
+        changes: [
+          {
+            key: "tool:csv-export",
+            action: "add",
+            extension: { kind: "tool", name: "csv-export" },
+            existing: null,
+            reason: null,
+          },
+        ],
+      }),
+    );
+
+    await expect(
+      previewExtensionImport('{"version":1}'),
+    ).resolves.toMatchObject({
+      valid: true,
+      extensions: [{ name: "csv-export" }],
+      changes: [{ key: "tool:csv-export", action: "add" }],
+    });
+    expect(mockedFetch).toHaveBeenCalledWith("/api/extensions/import/preview", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ manifest_json: '{"version":1}' }),
+    });
+  });
+
+  test("commitExtensionImport imports selected descriptors", async () => {
+    mockedFetch.mockResolvedValueOnce(
+      jsonResponse(200, { count: 0, extensions: [] }),
+    );
+
+    await commitExtensionImport('{"version":1}', ["tool:csv-export"]);
+
+    expect(mockedFetch).toHaveBeenCalledWith("/api/extensions/import", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manifest_json: '{"version":1}',
+        selected: ["tool:csv-export"],
+      }),
+    });
+  });
+
+  test("removeImportedExtension deletes an imported descriptor", async () => {
+    mockedFetch.mockResolvedValueOnce(
+      jsonResponse(200, { count: 0, extensions: [] }),
+    );
+
+    await removeImportedExtension("tool", "forecast-export");
+
+    expect(mockedFetch).toHaveBeenCalledWith(
+      "/api/extensions/imported/tool/forecast-export",
+      {
+        method: "DELETE",
       },
     );
   });

@@ -1,5 +1,8 @@
 """Core behavior tests for MCP client server config building."""
 
+import os
+from pathlib import Path
+
 import pytest
 
 from deerflow.config.extensions_config import ExtensionsConfig, McpServerConfig
@@ -42,6 +45,163 @@ def test_extensions_config_resolves_env_variables_inside_nested_collections(monk
     assert resolved["env"] == {"API_KEY": "secret"}
     assert resolved["enabled"] is True
     assert resolved["timeout"] == 30
+
+
+def test_extensions_config_loads_enabled_registry_mcp_servers(monkeypatch, tmp_path: Path):
+    config_path = tmp_path / "extensions_config.json"
+    config_path.write_text('{"mcpServers": {}, "skills": {}}', encoding="utf-8")
+    manifest_path = tmp_path / "registry.json"
+    manifest_path.write_text(
+        """
+        {
+          "version": 1,
+          "extensions": [
+            {
+              "kind": "mcp",
+              "name": "local-docs",
+              "enabled": true,
+              "source": "local",
+              "description": "Local docs MCP",
+              "metadata": {
+                "type": "stdio",
+                "command": "python",
+                "args": ["-m", "internal_mcps.docs"],
+                "env": {"DOCS_ROOT": "$DOCS_ROOT"}
+              }
+            },
+            {
+              "kind": "mcp",
+              "name": "disabled-docs",
+              "enabled": false,
+              "source": "local",
+              "metadata": {
+                "type": "stdio",
+                "command": "python"
+              }
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
+    monkeypatch.setenv("DOCS_ROOT", str(tmp_path / "docs"))
+
+    config = ExtensionsConfig.from_file()
+
+    assert sorted(config.mcp_servers) == ["local-docs"]
+    assert config.mcp_servers["local-docs"].command == "python"
+    assert config.mcp_servers["local-docs"].args == ["-m", "internal_mcps.docs"]
+    assert config.mcp_servers["local-docs"].env == {"DOCS_ROOT": str(tmp_path / "docs")}
+    assert config.mcp_servers["local-docs"].description == "Local docs MCP"
+
+
+def test_extensions_config_file_mcp_servers_override_registry(monkeypatch, tmp_path: Path):
+    config_path = tmp_path / "extensions_config.json"
+    config_path.write_text(
+        """
+        {
+          "mcpServers": {
+            "local-docs": {
+              "type": "stdio",
+              "command": "uvx",
+              "args": ["company-docs"],
+              "description": "Explicit config wins"
+            }
+          },
+          "skills": {}
+        }
+        """,
+        encoding="utf-8",
+    )
+    manifest_path = tmp_path / "registry.json"
+    manifest_path.write_text(
+        """
+        {
+          "version": 1,
+          "extensions": [
+            {
+              "kind": "mcp",
+              "name": "local-docs",
+              "enabled": true,
+              "source": "local",
+              "metadata": {
+                "type": "stdio",
+                "command": "python",
+                "args": ["-m", "internal_mcps.docs"]
+              }
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
+
+    config = ExtensionsConfig.from_file()
+
+    assert config.mcp_servers["local-docs"].command == "uvx"
+    assert config.mcp_servers["local-docs"].args == ["company-docs"]
+    assert config.mcp_servers["local-docs"].description == "Explicit config wins"
+
+
+def test_build_servers_config_includes_registry_mcp_servers(monkeypatch, tmp_path: Path):
+    config_path = tmp_path / "extensions_config.json"
+    config_path.write_text('{"mcpServers": {}, "skills": {}}', encoding="utf-8")
+    manifest_path = tmp_path / "registry.json"
+    manifest_path.write_text(
+        """
+        {
+          "version": 1,
+          "extensions": [
+            {
+              "kind": "mcp",
+              "name": "local-docs",
+              "enabled": true,
+              "source": "local",
+              "metadata": {
+                "type": "stdio",
+                "command": "python",
+                "args": ["-m", "internal_mcps.docs"]
+              }
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
+
+    servers = build_servers_config(ExtensionsConfig.from_file())
+
+    assert servers == {
+        "local-docs": {
+            "transport": "stdio",
+            "command": "python",
+            "args": ["-m", "internal_mcps.docs"],
+        }
+    }
+
+
+def test_mcp_cache_config_signature_tracks_registry_manifests(monkeypatch, tmp_path: Path):
+    from deerflow.mcp import cache
+
+    config_path = tmp_path / "extensions_config.json"
+    config_path.write_text('{"mcpServers": {}, "skills": {}}', encoding="utf-8")
+    manifest_path = tmp_path / "registry.json"
+    manifest_path.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
+
+    first = cache._get_config_signature()
+    os.utime(manifest_path, (manifest_path.stat().st_atime, manifest_path.stat().st_mtime + 10))
+    second = cache._get_config_signature()
+
+    assert first != second
+    assert str(manifest_path) in {path for path, _mtime in second}
 
 
 def test_build_server_params_stdio_requires_command():

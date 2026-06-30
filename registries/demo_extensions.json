@@ -1,0 +1,185 @@
+{
+  "version": 1,
+  "imports": [
+    {
+      "name": "internal-agents",
+      "kind": "agent",
+      "type": "directory",
+      "path": "internal_agents"
+    },
+    {
+      "name": "internal-mcps",
+      "kind": "mcp",
+      "type": "directory",
+      "path": "internal_mcps"
+    },
+    {
+      "name": "internal-tools",
+      "kind": "tool",
+      "type": "directory",
+      "path": "internal_tools"
+    },
+    {
+      "name": "internal-skills",
+      "kind": "skill",
+      "type": "directory",
+      "path": "internal_skills"
+    }
+  ],
+  "extensions": [
+    {
+      "kind": "agent",
+      "name": "reporting-agent",
+      "enabled": true,
+      "source": "local",
+      "entrypoint": "internal_agents.reporting:create_agent",
+      "description": "Generate internal reports and exports from structured business data",
+      "display_name": "Reporting Agent",
+      "category": "Reporting",
+      "metadata": {
+        "tool_groups": ["reporting"],
+        "skills": [],
+        "soul": "You are an internal reporting specialist. Produce concise, auditable reports and prefer generated artifacts when the user asks for deliverables.",
+        "prompt_template": "Ask {{display_name}} to generate a concise internal report about ",
+        "example_prompts": [
+          "Ask Reporting Agent to summarize quarterly delivery risks and produce an artifact."
+        ]
+      }
+    },
+    {
+      "kind": "tool",
+      "name": "html-report",
+      "enabled": true,
+      "source": "local",
+      "entrypoint": "internal_tools.reporting:html_report",
+      "description": "Generate a self-contained HTML report artifact",
+      "tags": ["reporting", "artifact"],
+      "risk_level": "low",
+      "display_name": "HTML Report",
+      "category": "Reporting",
+      "metadata": {
+        "group": "reporting",
+        "prompt_template": "Use {{display_name}} to create an HTML report titled ",
+        "example_prompts": [
+          "Use HTML Report to create an HTML report titled Hackathon Readiness with sections for architecture, registry loading, and demo flow."
+        ],
+        "input_schema": {
+          "title": "string",
+          "sections_json": "JSON array of objects with title and body"
+        }
+      }
+    },
+    {
+      "kind": "tool",
+      "name": "csv-export",
+      "enabled": true,
+      "source": "local",
+      "entrypoint": "internal_tools.reporting:csv_export",
+      "description": "Generate a CSV artifact from structured JSON rows",
+      "tags": ["reporting", "data"],
+      "risk_level": "low",
+      "display_name": "CSV Export",
+      "category": "Reporting",
+      "metadata": {
+        "group": "reporting",
+        "prompt_template": "Use {{display_name}} to export CSV rows for ",
+        "example_prompts": [
+          "Use CSV Export to create a CSV with rows for activation, retention, and revenue risk."
+        ],
+        "input_schema": {
+          "rows_json": "JSON array of row objects"
+        }
+      }
+    },
+    {
+      "kind": "tool",
+      "name": "pdf-report",
+      "enabled": true,
+      "source": "local",
+      "entrypoint": "internal_tools.reporting:pdf_report",
+      "description": "Generate a PDF report from structured report sections",
+      "tags": [
+        "reporting",
+        "artifact"
+      ],
+      "risk_level": "low",
+      "display_name": "PDF Report",
+      "category": "Reporting",
+      "metadata": {
+        "group": "reporting",
+        "prompt_template": "Use {{display_name}} to create a PDF report titled ",
+        "example_prompts": [
+          "Use PDF Report to create a PDF report titled Executive Demo Summary with three concise sections."
+        ],
+        "input_schema": {
+          "title": "string",
+          "sections_json": "JSON array of objects with title and body"
+        }
+      }
+    },
+    {
+      "kind": "tool",
+      "name": "python-function",
+      "enabled": true,
+      "source": "local",
+      "entrypoint": "internal_tools.python_runner:python_function",
+      "description": "Execute allowlisted importable Python functions with JSON args and kwargs",
+      "tags": [
+        "python",
+        "automation"
+      ],
+      "risk_level": "medium",
+      "display_name": "Python Function",
+      "category": "Automation",
+      "metadata": {
+        "group": "python",
+        "prompt_template": "Use {{display_name}} to run the allowlisted function ",
+        "example_prompts": [
+          "Use Python Function to run internal_tools.python_examples:summarize_metrics for [{\"value\": 10}, {\"value\": 20}]."
+        ],
+        "input_schema": {
+          "entrypoint": "module:function allowlisted in DEERFLOW_PYTHON_FUNCTION_ALLOWLIST",
+          "args_json": "JSON array",
+          "kwargs_json": "JSON object"
+        }
+      }
+    },
+    {
+      "kind": "mcp",
+      "name": "local-docs",
+      "enabled": false,
+      "source": "local",
+      "description": "Example stdio MCP server descriptor for internal documentation search",
+      "display_name": "Local Docs MCP",
+      "category": "Knowledge",
+      "metadata": {
+        "type": "stdio",
+        "command": "python",
+        "args": [
+          "-m",
+          "internal_mcps.local_docs"
+        ],
+        "env": {
+          "DOCS_ROOT": "$DOCS_ROOT"
+        },
+        "prompt_template": "Use the {{display_name}} MCP to search internal docs for ",
+        "example_prompts": [
+          "Use the Local Docs MCP to search internal docs for the onboarding policy."
+        ]
+      }
+    },
+    {
+      "kind": "skill",
+      "name": "market-research",
+      "enabled": false,
+      "source": "local",
+      "entrypoint": "internal_skills/market-research",
+      "description": "Research market context from approved sources",
+      "allowed_tools": ["web_search", "html_report", "csv_export"],
+      "tags": ["research"],
+      "risk_level": "medium",
+      "display_name": "Market Research",
+      "category": "Research"
+    }
+  ]
+}

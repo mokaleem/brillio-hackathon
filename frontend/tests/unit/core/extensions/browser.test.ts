@@ -2,8 +2,15 @@ import { describe, expect, test } from "@rstest/core";
 
 import {
   applyExtensionEnabledUpdate,
+  buildExtensionPrompt,
+  buildDemoConversationPrompt,
+  extensionDisplayName,
   filterExtensions,
   formatExtensionKind,
+  getExtensionExamplePrompts,
+  getExtensionPromptTemplate,
+  requiresCapabilityApproval,
+  summarizeExtensionConfig,
   summarizeExtensions,
 } from "@/core/extensions/browser";
 import type { ExtensionDescriptor } from "@/core/extensions/types";
@@ -64,6 +71,31 @@ describe("extension browser helpers", () => {
     });
   });
 
+  test("summarizes enabled and disabled configuration by kind", () => {
+    expect(summarizeExtensionConfig(extensions)).toEqual({
+      agent: {
+        total: 1,
+        enabled: 1,
+        disabled: 0,
+      },
+      mcp: {
+        total: 0,
+        enabled: 0,
+        disabled: 0,
+      },
+      tool: {
+        total: 1,
+        enabled: 0,
+        disabled: 1,
+      },
+      skill: {
+        total: 1,
+        enabled: 1,
+        disabled: 0,
+      },
+    });
+  });
+
   test("filters by kind, status, and searchable fields", () => {
     expect(
       filterExtensions(extensions, {
@@ -95,5 +127,93 @@ describe("extension browser helpers", () => {
   test("formats MCP as an acronym", () => {
     expect(formatExtensionKind("mcp")).toBe("MCP");
     expect(formatExtensionKind("agent")).toBe("Agent");
+  });
+
+  test("uses display name as the capability label", () => {
+    expect(extensionDisplayName(extensions[0]!)).toBe("Finance Analyst");
+    expect(extensionDisplayName(extensions[1]!)).toBe("market-data-tool");
+  });
+
+  test("builds prompts from registry prompt templates", () => {
+    const extension: ExtensionDescriptor = {
+      ...extensions[1]!,
+      display_name: "Market Data",
+      metadata: {
+        prompt_template:
+          "Use {{display_name}} ({{kind}}) to inspect {{category}} for ",
+      },
+      category: "Treasury",
+    };
+
+    expect(buildExtensionPrompt(extension)).toBe(
+      "Use Market Data (Tool) to inspect Treasury for ",
+    );
+  });
+
+  test("requires approval for high-risk enabled capabilities", () => {
+    expect(requiresCapabilityApproval(extensions[1]!)).toBe(true);
+    expect(requiresCapabilityApproval(extensions[0]!)).toBe(false);
+    expect(
+      requiresCapabilityApproval({ ...extensions[1]!, risk_level: null }),
+    ).toBe(false);
+  });
+
+  test("uses first example prompt when no prompt template exists", () => {
+    const extension: ExtensionDescriptor = {
+      ...extensions[1]!,
+      metadata: {
+        example_prompts: [
+          "Pull market data for the current pipeline.",
+          "Compare market data by region.",
+        ],
+      },
+    };
+
+    expect(buildExtensionPrompt(extension)).toBe(
+      "Pull market data for the current pipeline.",
+    );
+    expect(getExtensionExamplePrompts(extension)).toEqual([
+      "Pull market data for the current pipeline.",
+      "Compare market data by region.",
+    ]);
+  });
+
+  test("reads prompt template metadata for management display", () => {
+    const extension: ExtensionDescriptor = {
+      ...extensions[1]!,
+      metadata: {
+        prompt_template: "Use {{display_name}} to ",
+      },
+    };
+
+    expect(getExtensionPromptTemplate(extension)).toBe(
+      "Use {{display_name}} to ",
+    );
+    expect(getExtensionExamplePrompts(extension)).toEqual([]);
+  });
+
+  test("falls back to kind-specific prompts", () => {
+    expect(buildExtensionPrompt(extensions[0]!)).toBe(
+      "Ask Finance Analyst to ",
+    );
+    expect(buildExtensionPrompt(extensions[2]!)).toBe("/quarterly-report ");
+    expect(buildExtensionPrompt(extensions[1]!)).toBe(
+      "Use market-data-tool to ",
+    );
+  });
+
+  test("builds deterministic hackathon demo prompt from enabled capabilities", () => {
+    const prompt = buildDemoConversationPrompt(extensions);
+
+    expect(prompt).toContain(
+      "Run the Brillio hackathon internal assistant demo",
+    );
+    expect(prompt).toContain("Agent: Finance Analyst (finance-analyst)");
+    expect(prompt).toContain("Skill: quarterly-report (quarterly-report)");
+    expect(prompt).not.toContain("market-data-tool (market-data-tool)");
+    expect(prompt).toContain("Use HTML Report to create an HTML artifact");
+    expect(prompt).toContain(
+      "internal_tools.python_examples:summarize_metrics",
+    );
   });
 });

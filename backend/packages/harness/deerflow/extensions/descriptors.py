@@ -52,6 +52,17 @@ class RegistryImport(BaseModel):
         return target
 
 
+class ExtensionProvenance(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    imported_at: str
+    descriptor_hash: str
+    registry_version: int
+    source_name: str | None = None
+    source_path: str | None = None
+    source_url: str | None = None
+
+
 class ExtensionDescriptor(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -70,6 +81,7 @@ class ExtensionDescriptor(BaseModel):
     display_name: str | None = None
     icon: str | None = None
     category: str | None = None
+    provenance: ExtensionProvenance | None = None
 
     @field_validator("name")
     @classmethod

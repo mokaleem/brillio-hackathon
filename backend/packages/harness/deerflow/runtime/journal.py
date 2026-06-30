@@ -18,6 +18,7 @@ Key design decisions:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from collections.abc import Awaitable, Callable, Mapping
@@ -96,6 +97,9 @@ class RunJournal(BaseCallbackHandler):
 
         # Latency tracking
         self._llm_start_times: dict[str, float] = {}  # langchain run_id -> start time
+        self._tool_start_times: dict[str, float] = {}
+        self._tool_names: dict[str, str] = {}
+        self._tool_callers: dict[str, str] = {}
 
         # LLM request/response tracking
         self._llm_call_index = 0
@@ -323,15 +327,32 @@ class RunJournal(BaseCallbackHandler):
         self._put(event_type="llm.error", category="trace", content=str(error))
 
     def on_tool_start(self, serialized, input_str, *, run_id, parent_run_id=None, tags=None, metadata=None, inputs=None, **kwargs):
-        """Handle tool start event, cache tool call ID for later correlation"""
+        """Handle tool start event and record a compact capability audit row."""
         tool_call_id = str(run_id)
+        caller = self._identify_caller(tags)
+        tool_name = self._tool_name(serialized=serialized, metadata=metadata, fallback=kwargs.get("name"))
+        self._tool_start_times[tool_call_id] = time.monotonic()
+        self._tool_names[tool_call_id] = tool_name
+        self._tool_callers[tool_call_id] = caller
+        self._record_capability_audit(
+            phase="start",
+            run_id=tool_call_id,
+            name=tool_name,
+            status="started",
+            caller=caller,
+            preview_source=inputs if inputs is not None else input_str,
+        )
         logger.debug("Tool start for node %s, tool_call_id=%s, tags=%s", run_id, tool_call_id, tags)
 
-    def on_tool_end(self, output, *, run_id, parent_run_id=None, **kwargs):
-        """Handle tool end event, append message and clear node data"""
+    def on_tool_end(self, output, *, run_id, parent_run_id=None, tags=None, metadata=None, **kwargs):
+        """Handle tool end event, append message, and record audit outcome."""
+        tool_call_id = str(run_id)
+        tool_name = self._tool_names.get(tool_call_id) or self._tool_name_from_output(output) or kwargs.get("name") or "unknown_tool"
+        caller = self._tool_callers.get(tool_call_id) or self._identify_caller(tags)
         try:
             if isinstance(output, ToolMessage):
                 msg = cast(ToolMessage, output)
+                tool_name = msg.name or tool_name
                 self._put(event_type="llm.tool.result", category="message", content=msg.model_dump())
                 self._record_message_summary(msg)
             elif isinstance(output, Command):
@@ -339,6 +360,8 @@ class RunJournal(BaseCallbackHandler):
                 messages = cmd.update.get("messages", [])
                 for message in messages:
                     if isinstance(message, BaseMessage):
+                        if isinstance(message, ToolMessage) and message.name:
+                            tool_name = message.name
                         self._put(event_type="llm.tool.result", category="message", content=message.model_dump())
                         self._record_message_summary(message)
                     else:
@@ -346,9 +369,116 @@ class RunJournal(BaseCallbackHandler):
             else:
                 logger.warning(f"on_tool_end {run_id}: output is not ToolMessage: {type(output)}")
         finally:
+            self._record_capability_audit(
+                phase="end",
+                run_id=tool_call_id,
+                name=tool_name,
+                status="success",
+                caller=caller,
+                preview_source=output,
+            )
+            self._tool_names.pop(tool_call_id, None)
+            self._tool_callers.pop(tool_call_id, None)
             logger.debug("Tool end for node %s", run_id)
 
+    def on_tool_error(self, error: BaseException, *, run_id, parent_run_id=None, tags=None, metadata=None, **kwargs) -> None:
+        """Record failed tool/capability executions for audit queries."""
+        tool_call_id = str(run_id)
+        tool_name = self._tool_names.get(tool_call_id) or kwargs.get("name") or "unknown_tool"
+        caller = self._tool_callers.get(tool_call_id) or self._identify_caller(tags)
+        self._record_capability_audit(
+            phase="error",
+            run_id=tool_call_id,
+            name=tool_name,
+            status="error",
+            caller=caller,
+            preview_source=error,
+            error_type=type(error).__name__,
+        )
+        self._tool_names.pop(tool_call_id, None)
+        self._tool_callers.pop(tool_call_id, None)
+        logger.debug("Tool error for node %s", run_id)
+
     # -- Internal methods --
+
+    def _record_capability_audit(
+        self,
+        *,
+        phase: str,
+        run_id: str,
+        name: str,
+        status: str,
+        caller: str,
+        preview_source: Any,
+        error_type: str | None = None,
+    ) -> None:
+        duration_ms = self._tool_duration_ms(run_id) if phase in {"end", "error"} else None
+        content = {
+            "capability_kind": "tool",
+            "name": name,
+            "status": status,
+            "preview": self._audit_preview(preview_source),
+        }
+        if duration_ms is not None:
+            content["duration_ms"] = duration_ms
+        if error_type:
+            content["error_type"] = error_type
+        self._put(
+            event_type=f"capability.execution.{phase}",
+            category="audit",
+            content=content,
+            metadata={
+                "caller": caller,
+                "capability_kind": "tool",
+                "capability_name": name,
+                "langchain_run_id": run_id,
+                **({"duration_ms": duration_ms} if duration_ms is not None else {}),
+                **({"error_type": error_type} if error_type else {}),
+            },
+        )
+
+    def _tool_duration_ms(self, run_id: str) -> int | None:
+        started_at = self._tool_start_times.pop(run_id, None)
+        if started_at is None:
+            return None
+        return int((time.monotonic() - started_at) * 1000)
+
+    def _tool_name(self, *, serialized: Any, metadata: dict[str, Any] | None, fallback: Any = None) -> str:
+        for value in (
+            fallback,
+            metadata.get("tool_name") if isinstance(metadata, dict) else None,
+            metadata.get("name") if isinstance(metadata, dict) else None,
+            serialized.get("name") if isinstance(serialized, dict) else None,
+            serialized.get("id", [None])[-1] if isinstance(serialized, dict) and isinstance(serialized.get("id"), list) else None,
+        ):
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return "unknown_tool"
+
+    def _tool_name_from_output(self, output: Any) -> str | None:
+        if isinstance(output, ToolMessage) and output.name:
+            return output.name
+        if isinstance(output, Command):
+            for message in output.update.get("messages", []):
+                if isinstance(message, ToolMessage) and message.name:
+                    return message.name
+        return None
+
+    def _audit_preview(self, value: Any, *, max_length: int = 500) -> str | None:
+        if value is None or value == "":
+            return None
+        if isinstance(value, BaseMessage):
+            return self._truncate_audit_preview(self._message_text(value), max_length=max_length)
+        if isinstance(value, BaseException):
+            return self._truncate_audit_preview(str(value), max_length=max_length)
+        try:
+            encoded = json.dumps(value, default=str, ensure_ascii=False, sort_keys=True)
+        except TypeError:
+            encoded = repr(value)
+        return self._truncate_audit_preview(encoded, max_length=max_length)
+
+    def _truncate_audit_preview(self, value: str, *, max_length: int) -> str:
+        return value if len(value) <= max_length else f"{value[:max_length]}..."
 
     def _put(self, *, event_type: str, category: str, content: str | dict = "", metadata: dict | None = None) -> None:
         self._buffer.append(

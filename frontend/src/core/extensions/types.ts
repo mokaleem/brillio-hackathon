@@ -16,6 +16,16 @@ export interface ExtensionDescriptor {
   display_name?: string | null;
   icon?: string | null;
   category?: string | null;
+  provenance?: ExtensionProvenance | null;
+}
+
+export interface ExtensionProvenance {
+  imported_at: string;
+  descriptor_hash: string;
+  registry_version: number;
+  source_name?: string | null;
+  source_path?: string | null;
+  source_url?: string | null;
 }
 
 export interface ExtensionsResponse {
@@ -27,8 +37,35 @@ export interface ExtensionValidateResponse {
   valid: boolean;
   count: number;
   errors: string[];
+  warnings: string[];
+}
+
+export interface ExtensionHealthResponse {
+  valid: boolean;
+  count: number;
+  manifests: string[];
+  errors: string[];
+  warnings: string[];
 }
 
 export interface ExtensionUpdateResponse {
   extension: ExtensionDescriptor;
+}
+
+export interface ExtensionImportPreviewResponse {
+  valid: boolean;
+  count: number;
+  extensions: ExtensionDescriptor[];
+  errors: string[];
+  warnings: string[];
+  duplicates: string[];
+  changes: ExtensionImportPreviewChange[];
+}
+
+export interface ExtensionImportPreviewChange {
+  key: string;
+  action: "add" | "conflict";
+  extension: ExtensionDescriptor;
+  existing?: ExtensionDescriptor | null;
+  reason?: string | null;
 }

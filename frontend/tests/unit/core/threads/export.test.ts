@@ -22,6 +22,35 @@ function makeThread(): AgentThread {
   } as unknown as AgentThread;
 }
 
+function makeThreadWithTimeline(): AgentThread {
+  return {
+    ...makeThread(),
+    values: {
+      messages: [],
+      run_timeline_events: [
+        {
+          id: "run:start:0",
+          timestamp: "2026-06-29T05:00:00.000Z",
+          kind: "run",
+          phase: "start",
+          name: "Run",
+          label: "Run started",
+          summary: null,
+        },
+        {
+          id: "on_tool_end:html_report:1",
+          timestamp: "2026-06-29T05:00:02.000Z",
+          kind: "tool",
+          phase: "end",
+          name: "html_report",
+          label: "Html Report finished",
+          summary: "HTML report generated",
+        },
+      ],
+    },
+  } as unknown as AgentThread;
+}
+
 function human(content: string, extra: Partial<Message> = {}): Message {
   return {
     id: `h-${content}`,
@@ -102,6 +131,16 @@ describe("formatThreadAsMarkdown", () => {
     ]);
     expect(md).not.toContain("confidential");
   });
+
+  it("includes persisted run timeline events", () => {
+    const md = formatThreadAsMarkdown(makeThreadWithTimeline(), [
+      ai("public answer"),
+    ]);
+
+    expect(md).toContain("## Run Trace");
+    expect(md).toContain("Run started");
+    expect(md).toContain("Html Report finished");
+  });
 });
 
 describe("formatThreadAsMarkdown opt-in flags", () => {
@@ -165,6 +204,20 @@ describe("formatThreadAsJSON opt-in flags", () => {
 });
 
 describe("formatThreadAsJSON", () => {
+  it("includes persisted run timeline events", () => {
+    const raw = formatThreadAsJSON(makeThreadWithTimeline(), [
+      ai("public answer"),
+    ]);
+    const parsed = JSON.parse(raw) as {
+      run_timeline_events: { label: string }[];
+    };
+
+    expect(parsed.run_timeline_events.map((event) => event.label)).toEqual([
+      "Run started",
+      "Html Report finished",
+    ]);
+  });
+
   it("strips hidden messages, tool messages, reasoning, and tool calls", () => {
     const messages = [
       human("hello"),

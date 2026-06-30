@@ -22,11 +22,13 @@ venv/
 
 # Environment variables
 .env
+docker/hackathon-demo.env
 
 # Configuration files
 config.yaml
 mcp_config.json
 extensions_config.json
+registries/imported_extensions.json
 
 # IDE
 .idea/

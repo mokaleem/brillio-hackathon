@@ -1,3 +1,5 @@
+import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -8,6 +10,7 @@ from deerflow.config.tool_config import ToolConfig
 from deerflow.extensions import (
     ExtensionKind,
     ExtensionManifest,
+    ExtensionPermissionError,
     ExtensionSource,
     execute_python_entrypoint,
     get_runtime_extension_manifest_paths,
@@ -19,6 +22,7 @@ from deerflow.extensions import (
     materialize_skill_path,
     materialize_tool,
     materialize_tool_config,
+    validate_extension_registry,
 )
 
 
@@ -226,6 +230,68 @@ def test_runtime_catalog_uses_env_manifest(monkeypatch, tmp_path: Path) -> None:
     assert [extension.name for extension in catalog.enabled(kind="tool")] == ["company-metric-tool"]
 
 
+def test_runtime_catalog_resolves_relative_env_manifest_against_project_root(monkeypatch, tmp_path: Path) -> None:
+    manifest_path = tmp_path / "registries" / "extensions.json"
+    manifest_path.parent.mkdir()
+    manifest_path.write_text(
+        """
+        {
+          "version": 1,
+          "extensions": [
+            {
+              "kind": "tool",
+              "name": "company-metric-tool",
+              "enabled": true,
+              "source": "local",
+              "entrypoint": "tests.support.registry_tools:company_metric_tool"
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", "registries/extensions.json")
+
+    paths = get_runtime_extension_manifest_paths(repo_root=tmp_path)
+
+    assert paths == [manifest_path]
+
+
+def test_runtime_catalog_adds_project_root_to_python_path(monkeypatch, tmp_path: Path) -> None:
+    package_dir = tmp_path / "company_tools"
+    package_dir.mkdir()
+    (package_dir / "__init__.py").write_text("", encoding="utf-8")
+    (package_dir / "demo.py").write_text("def make_value():\n    return 'loaded'\n", encoding="utf-8")
+    manifest_path = tmp_path / "registries" / "extensions.json"
+    manifest_path.parent.mkdir()
+    manifest_path.write_text(
+        """
+        {
+          "version": 1,
+          "extensions": [
+            {
+              "kind": "agent",
+              "name": "demo-agent",
+              "enabled": true,
+              "source": "local",
+              "entrypoint": "company_tools.demo:make_value"
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
+    root_text = str(tmp_path.resolve(strict=False))
+    monkeypatch.setattr(sys, "path", [entry for entry in sys.path if entry != root_text])
+
+    catalog = load_runtime_extension_catalog(repo_root=tmp_path)
+    factory = materialize_agent_factory(catalog.enabled(kind="agent")[0])
+
+    assert factory() == "loaded"
+    assert sys.path[0] == root_text
+
+
 def test_runtime_catalog_is_empty_without_default_manifest(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("DEERFLOW_EXTENSION_MANIFESTS", raising=False)
 
@@ -241,8 +307,25 @@ def test_example_internal_extensions_manifest_loads() -> None:
 
     catalog = load_extension_catalog([manifest_path], repo_root=repo_root)
 
-    assert [extension.name for extension in catalog.enabled(kind="tool")] == ["html-report", "csv-export"]
+    assert [extension.name for extension in catalog.enabled(kind="agent")] == ["reporting-agent"]
+    assert [extension.name for extension in catalog.enabled(kind="tool")] == [
+        "html-report",
+        "csv-export",
+        "pdf-report",
+        "python-function",
+    ]
     assert catalog.enabled(kind="skill") == []
+
+
+def test_example_internal_extensions_manifest_materializes_reporting_tools(monkeypatch) -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    monkeypatch.syspath_prepend(str(repo_root))
+    manifest_path = repo_root / "registries" / "internal_extensions.example.json"
+
+    catalog = load_extension_catalog([manifest_path], repo_root=repo_root)
+    tools = [materialize_tool(extension) for extension in catalog.enabled(kind="tool")]
+
+    assert [tool.name for tool in tools] == ["html_report", "csv_export", "pdf_report", "python_function"]
 
 
 def test_execute_python_entrypoint_calls_importable_function() -> None:
@@ -274,6 +357,100 @@ def test_materialize_tool_returns_base_tool() -> None:
     tool = materialize_tool(extension)
 
     assert tool.name == "ask_clarification"
+
+
+def test_materialized_tool_writes_execution_audit_log(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("DEER_FLOW_HOME", str(tmp_path))
+    monkeypatch.delenv("DEER_FLOW_AUDIT_DISABLED", raising=False)
+    extension = ExtensionManifest.model_validate(
+        {
+            "version": 1,
+            "extensions": [
+                {
+                    "kind": "tool",
+                    "name": "ask-clarification",
+                    "enabled": True,
+                    "source": "registry",
+                    "entrypoint": "deerflow.tools.builtins.clarification_tool:ask_clarification_tool",
+                    "description": "Ask for clarification",
+                    "risk_level": "medium",
+                    "owner": "platform",
+                }
+            ],
+        }
+    ).extensions[0]
+
+    tool = materialize_tool(extension)
+
+    result = tool.invoke(
+        {
+            "question": "Which region?",
+            "clarification_type": "missing_info",
+        }
+    )
+
+    assert result == "Clarification request processed by middleware"
+    audit_path = tmp_path / "audit" / "executions.jsonl"
+    records = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()]
+    assert len(records) == 1
+    record = records[0]
+    assert record["event"] == "extension.execution"
+    assert record["status"] == "success"
+    assert record["extension"]["kind"] == "tool"
+    assert record["extension"]["name"] == "ask-clarification"
+    assert record["extension"]["risk_level"] == "medium"
+    assert record["extension"]["owner"] == "platform"
+    assert record["input_summary"] == {
+        "type": "mapping",
+        "size": 2,
+        "keys": ["question", "clarification_type"],
+        "truncated": False,
+    }
+    assert record["output_summary"]["type"] == "string"
+    assert record["error"] is None
+
+
+def test_materialize_tool_blocks_high_risk_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS", raising=False)
+    extension = ExtensionManifest.model_validate(
+        {
+            "version": 1,
+            "extensions": [
+                {
+                    "kind": "tool",
+                    "name": "high-risk-tool",
+                    "enabled": True,
+                    "source": "registry",
+                    "entrypoint": "deerflow.tools.builtins.clarification_tool:ask_clarification_tool",
+                    "risk_level": "high",
+                }
+            ],
+        }
+    ).extensions[0]
+
+    with pytest.raises(ExtensionPermissionError, match="blocked by runtime extension policy"):
+        materialize_tool(extension)
+
+
+def test_materialize_tool_allows_high_risk_when_policy_allows_high(monkeypatch) -> None:
+    monkeypatch.setenv("DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS", "low,medium,high")
+    extension = ExtensionManifest.model_validate(
+        {
+            "version": 1,
+            "extensions": [
+                {
+                    "kind": "tool",
+                    "name": "approved-high-risk-tool",
+                    "enabled": True,
+                    "source": "registry",
+                    "entrypoint": "deerflow.tools.builtins.clarification_tool:ask_clarification_tool",
+                    "risk_level": "high",
+                }
+            ],
+        }
+    ).extensions[0]
+
+    assert materialize_tool(extension).name == "ask_clarification"
 
 
 def test_materialize_tool_config_uses_descriptor_metadata_group() -> None:
@@ -372,3 +549,63 @@ def test_materialize_agent_factory_returns_callable() -> None:
     factory = materialize_agent_factory(extension)
 
     assert factory(81) == 9
+
+
+def test_materialize_agent_factory_blocks_high_risk_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS", raising=False)
+    extension = ExtensionManifest.model_validate(
+        {
+            "version": 1,
+            "extensions": [
+                {
+                    "kind": "agent",
+                    "name": "risky-agent",
+                    "enabled": True,
+                    "source": "registry",
+                    "entrypoint": "math:sqrt",
+                    "risk_level": "high",
+                }
+            ],
+        }
+    ).extensions[0]
+
+    with pytest.raises(ExtensionPermissionError, match="agent:risky-agent"):
+        materialize_agent_factory(extension)
+
+
+def test_validate_extension_registry_reports_missing_import_and_bad_mcp(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "extensions.json"
+    manifest_path.write_text(
+        """
+        {
+          "version": 1,
+          "imports": [
+            {
+              "name": "missing-mcps",
+              "kind": "mcp",
+              "type": "directory",
+              "path": "internal_mcps"
+            }
+          ],
+          "extensions": [
+            {
+              "kind": "mcp",
+              "name": "remote-docs",
+              "enabled": true,
+              "source": "local",
+              "metadata": {
+                "type": "http"
+              }
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    health = validate_extension_registry([manifest_path], repo_root=tmp_path)
+
+    assert health.valid is False
+    assert health.count == 1
+    assert any("missing-mcps" in error for error in health.errors)
+    assert any("metadata.url" in error for error in health.errors)

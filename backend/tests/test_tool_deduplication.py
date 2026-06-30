@@ -184,6 +184,75 @@ def test_registry_tools_respect_group_filters(mock_bash, monkeypatch, tmp_path):
     assert [tool.name for tool in result] == ["company_export_tool"]
 
 
+@patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+def test_high_risk_registry_tools_are_skipped_by_default(mock_bash, monkeypatch, tmp_path, caplog):
+    """Runtime loading refuses high-risk registry tools unless policy allows them."""
+    import logging
+
+    _make_registry_support_importable(monkeypatch)
+    manifest_path = tmp_path / "extensions.json"
+    _write_registry_manifest(
+        manifest_path,
+        [
+            {
+                "kind": "tool",
+                "name": "company-metric-tool",
+                "enabled": True,
+                "source": "local",
+                "entrypoint": REGISTRY_METRIC_TOOL_ENTRYPOINT,
+                "risk_level": "low",
+            },
+            {
+                "kind": "tool",
+                "name": "company-export-tool",
+                "enabled": True,
+                "source": "registry",
+                "entrypoint": REGISTRY_EXPORT_TOOL_ENTRYPOINT,
+                "risk_level": "high",
+            },
+        ],
+    )
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
+    monkeypatch.delenv("DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS", raising=False)
+
+    with patch("deerflow.tools.tools.BUILTIN_TOOLS", []):
+        with caplog.at_level(logging.WARNING, logger="deerflow.tools.tools"):
+            result = get_available_tools(include_mcp=False, app_config=_make_minimal_config([]))
+
+    names = [tool.name for tool in result]
+    assert "company_metric_tool" in names
+    assert "company_export_tool" not in names
+    assert any("blocked by runtime extension policy" in record.message for record in caplog.records)
+
+
+@patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+def test_high_risk_registry_tools_load_when_runtime_policy_allows_high(mock_bash, monkeypatch, tmp_path):
+    """Operators can opt high-risk registry tools into the runtime allowlist."""
+    _make_registry_support_importable(monkeypatch)
+    manifest_path = tmp_path / "extensions.json"
+    _write_registry_manifest(
+        manifest_path,
+        [
+            {
+                "kind": "tool",
+                "name": "company-export-tool",
+                "enabled": True,
+                "source": "registry",
+                "entrypoint": REGISTRY_EXPORT_TOOL_ENTRYPOINT,
+                "risk_level": "high",
+            },
+        ],
+    )
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
+    monkeypatch.setenv("DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS", "low,medium,high")
+
+    with patch("deerflow.tools.tools.BUILTIN_TOOLS", []):
+        result = get_available_tools(include_mcp=False, app_config=_make_minimal_config([]))
+
+    assert [tool.name for tool in result] == ["company_export_tool"]
+    assert result[0].invoke({"name": "audit"}) == "export:audit"
+
+
 @patch("deerflow.tools.tools.get_app_config")
 @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
 def test_subagent_async_only_tool_gets_sync_wrapper(mock_bash, mock_cfg):
