@@ -4,7 +4,7 @@ Date: 2026-06-30
 Branch: `dev`
 Pull request: https://github.com/mokaleem/brillio-hackathon/pull/1
 Head branch: `dev`
-Status: Draft PR, mergeable; mark ready after the latest `Hackathon Quality Gate` run is green.
+Status: Ready PR, mergeable; latest GitHub Actions checks are green on `28ee4fe0`.
 
 This package is the ready-to-share PR and release brief for the internal DeerFlow assistant demo. It is scoped to the configurable harness, dynamic capability registry, separated UI layer, and hackathon judge path.
 
@@ -25,9 +25,9 @@ Body:
 
 - Adds a loosely coupled extension registry for agents, MCPs, tools, and skills with local and external manifest support.
 - Keeps harness/SDK, gateway APIs, UI, and internal company capabilities separated so the UI or harness can move to separate deployables.
-- Adds admin registry management: validation, health, import preview, import commit, imported-capability removal, dependency-gated enablement, and runtime observability.
+- Adds admin registry management: validation, health, import preview, import commit, imported-capability removal, dependency-gated enablement, runtime audit, and demo observability.
 - Streams and persists orchestration trace/audit context so the UI can show thinking/tool progress plus final answers and generated artifacts.
-- Provides a one-command hackathon demo launcher, split deployment bundle, demo smoke scripts, and judge walkthrough docs.
+- Provides a one-command hackathon demo launcher, split deployment bundle, release smoke gate, demo smoke scripts, judge walkthrough docs, and PR evidence screenshots.
 
 ## Demo Path
 
@@ -43,7 +43,7 @@ Body:
 
 - Full release gate: `make release-smoke`
 - Fast release gate without Chromium E2E: `python scripts/release_smoke.py --skip-e2e`
-- GitHub Actions `Hackathon Quality Gate`: `Backend Readiness`, `Frontend Quality`, and `Demo E2E` pass on the release branch before marking ready.
+- GitHub Actions: `backend-unit-tests`, `backend-blocking-io`, `frontend-unit-tests`, `e2e-tests`, `Hackathon Quality Gate`, and `Replay E2E` are green on the latest commit.
 - `uv run pytest tests/test_audit_router.py -q`
 - `uv run pytest tests/test_extensions_router.py -q`
 - `uv run ruff format --check .`
@@ -85,6 +85,10 @@ Body:
 
 ## Commit Spine
 
+- `28ee4fe0` - Python function allowlist entrypoint parsing CI fix.
+- `531e9d12` - release status refresh after PR readiness.
+- `d75ec4fa` - hackathon judge runbook.
+- `2ab54d90` - release status refresh.
 - `ebba959e` - backend format gate aligned with CI.
 - `4be14f76` - hackathon release smoke gate.
 - `b7ebbc8d` - PR evidence screenshots.
