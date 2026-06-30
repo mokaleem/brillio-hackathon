@@ -2,6 +2,9 @@
 
 Date: 2026-06-30
 Branch: `dev`
+Pull request: https://github.com/mokaleem/brillio-hackathon/pull/1
+Head commit: `ebba959e`
+Status: Draft PR, mergeable, Hackathon Quality Gate green.
 
 This package is the ready-to-share PR and release brief for the internal DeerFlow assistant demo. It is scoped to the configurable harness, dynamic capability registry, separated UI layer, and hackathon judge path.
 
@@ -38,8 +41,10 @@ Body:
 
 - Full release gate: `make release-smoke`
 - Fast release gate without Chromium E2E: `python scripts/release_smoke.py --skip-e2e`
+- GitHub Actions `Hackathon Quality Gate` on `ebba959e`: `Backend Readiness`, `Frontend Quality`, and `Demo E2E` passed.
 - `uv run pytest tests/test_audit_router.py -q`
 - `uv run pytest tests/test_extensions_router.py -q`
+- `uv run ruff format --check .`
 - `uv run ruff check app\gateway\routers\audit.py app\gateway\routers\extensions.py app\gateway\app.py app\gateway\routers\__init__.py tests\test_audit_router.py tests\test_extensions_router.py`
 - `pnpm test tests/unit/core/audit/api.test.ts`
 - `pnpm test tests/unit/core/extensions/api.test.ts`
@@ -78,6 +83,12 @@ Body:
 
 ## Commit Spine
 
+- `ebba959e` - backend format gate aligned with CI.
+- `4be14f76` - hackathon release smoke gate.
+- `b7ebbc8d` - PR evidence screenshots.
+- `3456c1d9` - mock artifact tracing scope fix.
+- `3c80da73` - frontend lint warning cleanup.
+- `f54960f3` - release package.
 - `38585e5e` - demo observability panel.
 - `4961ffea` - dependency validation before capability enablement.
 - `b950a874` - remove imported registry capabilities.
