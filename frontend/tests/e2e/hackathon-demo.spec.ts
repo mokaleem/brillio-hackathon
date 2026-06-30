@@ -179,6 +179,57 @@ function mockExtensionRegistryAPI(page: Page) {
     enabled: boolean;
   }[] = [];
 
+  void page.route("**/api/audit/executions**", async (route) => {
+    if (route.request().method() !== "GET") {
+      return route.fallback();
+    }
+    return fulfillJson(route, {
+      count: 2,
+      path: "D:/apps/brillio-hackathon/backend/.deer-flow/audit/executions.jsonl",
+      records: [
+        {
+          event: "extension.execution",
+          started_at: "2026-06-29T18:00:00Z",
+          ended_at: "2026-06-29T18:00:01Z",
+          duration_ms: 840,
+          status: "success",
+          extension: {
+            kind: "tool",
+            name: "html-report",
+            display_name: "HTML Report",
+            source: "registry",
+            risk_level: "low",
+            provenance: {
+              source_name: "finance-demo",
+            },
+          },
+          input_summary: { type: "mapping", size: 2, keys: ["title"] },
+          output_summary: { type: "string", length: 72 },
+          artifacts: ["reports/hackathon-readiness.html"],
+          error: null,
+        },
+        {
+          event: "extension.execution",
+          started_at: "2026-06-29T18:01:00Z",
+          ended_at: "2026-06-29T18:01:00Z",
+          duration_ms: 41,
+          status: "error",
+          extension: {
+            kind: "tool",
+            name: "python-function",
+            display_name: "Python Function",
+            source: "registry",
+            risk_level: "high",
+          },
+          input_summary: { type: "mapping", size: 3, keys: ["entrypoint"] },
+          output_summary: { type: "none" },
+          artifacts: [],
+          error: { type: "RuntimeError", message: "Function not allowlisted" },
+        },
+      ],
+    });
+  });
+
   void page.route("**/api/extensions**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -412,10 +463,21 @@ test.describe("Hackathon demo flow", () => {
     await expect(
       page.getByText("registries/demo_extensions.json").first(),
     ).toBeVisible();
-    await expect(page.getByText("HTML Report", { exact: true })).toBeVisible();
     await expect(
-      page.getByText("Python Function", { exact: true }),
+      page
+        .getByRole("listitem")
+        .filter({ has: page.getByText("html-report", { exact: true }) }),
     ).toBeVisible();
+    await expect(
+      page
+        .getByRole("listitem")
+        .filter({ has: page.getByText("python-function", { exact: true }) }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Execution Audit" }),
+    ).toBeVisible();
+    await expect(page.getByText("hackathon-readiness.html")).toBeVisible();
+    await expect(page.getByText("Function not allowlisted")).toBeVisible();
 
     await page.getByRole("button", { name: /^Import$/ }).click();
     await expect(

@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ActivityIcon,
   BotIcon,
   CheckCircle2Icon,
   Code2Icon,
@@ -42,6 +43,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { loadAuditExecutions } from "@/core/audit/api";
+import type { AuditExecutionRecord } from "@/core/audit/types";
 import {
   commitExtensionImport,
   loadExtensionHealth,
@@ -73,6 +76,7 @@ import { cn } from "@/lib/utils";
 
 const EXTENSION_QUERY_KEY = ["extensions", "catalog"] as const;
 const EXTENSION_HEALTH_QUERY_KEY = ["extensions", "health"] as const;
+const EXTENSION_AUDIT_QUERY_KEY = ["extensions", "audit"] as const;
 const EMPTY_EXTENSIONS: ExtensionDescriptor[] = [];
 const IMPORT_MANIFEST_MAX_BYTES = 512 * 1024;
 const SAMPLE_REGISTRY_JSON = JSON.stringify(
@@ -142,6 +146,10 @@ export function ExtensionBrowser() {
   const healthQuery = useQuery({
     queryKey: EXTENSION_HEALTH_QUERY_KEY,
     queryFn: () => loadExtensionHealth(),
+  });
+  const auditQuery = useQuery({
+    queryKey: EXTENSION_AUDIT_QUERY_KEY,
+    queryFn: () => loadAuditExecutions({ limit: 10 }),
   });
 
   const extensions = extensionsQuery.data?.extensions ?? EMPTY_EXTENSIONS;
@@ -296,6 +304,14 @@ export function ExtensionBrowser() {
         onKindChange={setKind}
       />
 
+      <ExecutionAuditPanel
+        records={auditQuery.data?.records ?? []}
+        isLoading={auditQuery.isLoading}
+        error={auditQuery.error instanceof Error ? auditQuery.error.message : null}
+        path={auditQuery.data?.path ?? ""}
+        onRetry={() => void auditQuery.refetch()}
+      />
+
       <section className="flex flex-col gap-3 border-b px-6 py-4 lg:flex-row lg:items-center">
         <label className="relative min-w-0 flex-1">
           <span className="sr-only">Search extensions</span>
@@ -378,6 +394,110 @@ export function ExtensionBrowser() {
         )}
       </main>
     </div>
+  );
+}
+
+function ExecutionAuditPanel({
+  records,
+  isLoading,
+  error,
+  path,
+  onRetry,
+}: {
+  records: AuditExecutionRecord[];
+  isLoading: boolean;
+  error: string | null;
+  path: string;
+  onRetry: () => void;
+}) {
+  return (
+    <section className="border-b px-6 py-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <ActivityIcon className="text-muted-foreground size-4" />
+          <h2 className="text-sm font-semibold">Execution Audit</h2>
+          {path && (
+            <span className="text-muted-foreground hidden truncate font-mono text-xs lg:inline">
+              {path}
+            </span>
+          )}
+        </div>
+        <Button variant="outline" size="sm" onClick={onRetry}>
+          <RefreshCcwIcon className="size-4" />
+          Refresh
+        </Button>
+      </div>
+      {isLoading ? (
+        <div className="grid gap-2 md:grid-cols-2">
+          <Skeleton className="h-20" />
+          <Skeleton className="h-20" />
+        </div>
+      ) : error ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-3">
+          <span className="text-muted-foreground text-sm">{error}</span>
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            Retry
+          </Button>
+        </div>
+      ) : records.length === 0 ? (
+        <div className="text-muted-foreground rounded-lg border border-dashed px-3 py-4 text-sm">
+          No registry tool executions recorded yet.
+        </div>
+      ) : (
+        <ul className="grid gap-2 xl:grid-cols-2">
+          {records.slice(0, 4).map((record) => (
+            <AuditRecordRow key={`${record.started_at}:${record.extension.name}`} record={record} />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function AuditRecordRow({ record }: { record: AuditExecutionRecord }) {
+  const extensionName =
+    record.extension.display_name ?? record.extension.name ?? "unknown";
+  const source =
+    record.extension.provenance?.source_name ?? record.extension.source ?? "";
+  return (
+    <li className="rounded-lg border px-3 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium">{extensionName}</div>
+          <div className="text-muted-foreground mt-1 flex flex-wrap gap-2 text-xs">
+            <span>{record.extension.kind ?? "extension"}</span>
+            {source && <span className="truncate">{source}</span>}
+            <span>{formatAuditTime(record.started_at)}</span>
+            {record.duration_ms !== null && record.duration_ms !== undefined && (
+              <span>{record.duration_ms}ms</span>
+            )}
+          </div>
+        </div>
+        <Badge variant={record.status === "error" ? "destructive" : "outline"}>
+          {record.status}
+        </Badge>
+      </div>
+      <div className="text-muted-foreground mt-2 flex flex-wrap gap-2 text-xs">
+        <RiskBadge riskLevel={record.extension.risk_level as ExtensionDescriptor["risk_level"]} />
+        <span>Input {formatSummary(record.input_summary)}</span>
+        <span>Output {formatSummary(record.output_summary)}</span>
+      </div>
+      {record.artifacts.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {record.artifacts.slice(0, 3).map((artifact) => (
+            <Badge key={artifact} variant="secondary">
+              {artifact.split(/[\\/]/).pop() ?? artifact}
+            </Badge>
+          ))}
+        </div>
+      )}
+      {record.error?.message && (
+        <div className="text-destructive mt-2 line-clamp-2 text-xs">
+          {record.error.type ? `${record.error.type}: ` : ""}
+          {record.error.message}
+        </div>
+      )}
+    </li>
   );
 }
 
@@ -1188,6 +1308,26 @@ function formatImportedAt(value: string) {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function formatAuditTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatSummary(summary: Record<string, unknown>) {
+  const type = typeof summary.type === "string" ? summary.type : "value";
+  const size = typeof summary.size === "number" ? `:${summary.size}` : "";
+  const length = typeof summary.length === "number" ? `:${summary.length}` : "";
+  return `${type}${size || length}`;
 }
 
 function formatProvenanceSource(extension: ExtensionDescriptor) {
