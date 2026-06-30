@@ -8,6 +8,8 @@ Status: Draft PR, mergeable, Hackathon Quality Gate green.
 
 This package is the ready-to-share PR and release brief for the internal DeerFlow assistant demo. It is scoped to the configurable harness, dynamic capability registry, separated UI layer, and hackathon judge path.
 
+Judge rehearsal runbook: `docs/hackathon-judge-runbook.md`
+
 ## Draft PR
 
 Title:

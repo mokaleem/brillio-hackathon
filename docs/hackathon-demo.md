@@ -20,6 +20,8 @@ Split UI deployment reference: `docs/split-ui-deployment.md`
 
 Release package and draft PR brief: `docs/hackathon-release-package.md`
 
+Judge rehearsal runbook: `docs/hackathon-judge-runbook.md`
+
 ## Setup
 
 Run from the repository root:
