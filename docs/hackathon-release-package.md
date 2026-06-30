@@ -47,9 +47,17 @@ Body:
 
 ## Known Warnings
 
-- Frontend lint still reports pre-existing warnings in `message-list-item.tsx` and `message-list.tsx`.
-- Playwright demo runs still print the existing Turbopack NFT warning from the mock artifact route.
+- No known lint or Turbopack warnings in the release gate as of `dev`.
 ```
+
+## Evidence Screenshots
+
+- `docs/pr-evidence/hackathon-extension-registry.png` - loaded registry, health, audit, and configuration controls.
+- `docs/pr-evidence/hackathon-demo-observability.png` - demo readiness, executions, artifacts, registry-sourced entries, and risk signal.
+- `docs/pr-evidence/hackathon-import-preview.png` - external registry preview before commit.
+- `docs/pr-evidence/hackathon-chat-capabilities.png` - chat capability picker with the hackathon demo prompt.
+- `docs/pr-evidence/hackathon-run-trace.png` - persisted run timeline and capability audit rows.
+- `docs/pr-evidence/hackathon-artifact-center.png` - generated HTML, CSV, and PDF artifact center.
 
 ## Release Checklist
 
@@ -82,4 +90,3 @@ Body:
 ## Release Notes
 
 This release turns the DeerFlow fork into a company-internal assistant platform. The important architectural choice is that registry descriptors are data, internal capabilities are outside the harness, and the UI only talks through gateway contracts. That keeps the hackathon demo impressive while preserving the option to package the harness as a Python dependency or host the UI separately.
-
