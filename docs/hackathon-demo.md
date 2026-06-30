@@ -18,6 +18,8 @@ Registry schema reference: `docs/extension-registry-schema.md`
 
 Split UI deployment reference: `docs/split-ui-deployment.md`
 
+Release package and draft PR brief: `docs/hackathon-release-package.md`
+
 ## Setup
 
 Run from the repository root:
