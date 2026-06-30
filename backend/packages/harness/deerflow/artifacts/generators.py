@@ -10,9 +10,7 @@ from typing import Any
 def generate_html_report(*, title: str, sections: Sequence[tuple[str, str]], output_path: Path | str) -> Path:
     path = _prepare_output_path(output_path)
     escaped_title = html.escape(title)
-    section_markup = "\n".join(
-        f"<section><h2>{html.escape(section_title)}</h2><p>{html.escape(body)}</p></section>" for section_title, body in sections
-    )
+    section_markup = "\n".join(f"<section><h2>{html.escape(section_title)}</h2><p>{html.escape(body)}</p></section>" for section_title, body in sections)
     document = f"""<!doctype html>
 <html lang="en">
 <head>

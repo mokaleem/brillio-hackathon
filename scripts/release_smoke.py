@@ -57,6 +57,11 @@ def build_release_smoke_commands(
             ),
         ),
         ReleaseSmokeCommand(
+            "backend format check",
+            backend,
+            ("uv", "run", "ruff", "format", "--check", "."),
+        ),
+        ReleaseSmokeCommand(
             "frontend API unit tests",
             frontend,
             (

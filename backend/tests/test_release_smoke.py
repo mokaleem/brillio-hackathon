@@ -23,6 +23,7 @@ def test_release_smoke_includes_backend_frontend_and_e2e_steps() -> None:
     assert labels == [
         "backend router and demo smoke tests",
         "backend focused ruff checks",
+        "backend format check",
         "frontend API unit tests",
         "frontend typecheck",
         "frontend lint",
@@ -46,6 +47,7 @@ def test_release_smoke_can_skip_e2e_for_fast_local_checks() -> None:
     assert [command.label for command in commands] == [
         "backend router and demo smoke tests",
         "backend focused ruff checks",
+        "backend format check",
         "frontend API unit tests",
         "frontend typecheck",
         "frontend lint",
