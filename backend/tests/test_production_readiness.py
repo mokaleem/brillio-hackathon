@@ -34,6 +34,7 @@ def test_demo_profile_passes_repository_readiness_checks() -> None:
         "production deployment docs",
         "enterprise health checks",
         "dependency audit gate",
+        "release operations runbook",
     ]
 
 

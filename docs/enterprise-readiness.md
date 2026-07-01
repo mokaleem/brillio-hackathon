@@ -123,7 +123,7 @@ download action without duplicating endpoint details.
 - [x] Add production compose/Kubernetes guidance separate from the hackathon demo bundle.
 - [x] Add health checks that cover gateway, UI, registry load, and artifact storage.
 - [x] Add dependency audit commands to the release gate.
-- [ ] Add rollback instructions and release owner checklist.
+- [x] Add rollback instructions and release owner checklist.
 
 Acceptance criteria:
 
@@ -183,6 +183,14 @@ release runs:
 $env:DEERFLOW_RUN_PIP_AUDIT = "1"
 python scripts\dependency_audit.py
 ```
+
+### Release Operations
+
+Rollback instructions and the release owner checklist now live in
+`docs/release-operations.md`, with a structured checklist template at
+`docs/templates/release-owner-checklist.json`. The runbook covers release owner
+responsibilities, pre-release validation, a rollback decision tree, post-release
+evidence, and communication templates.
 
 ## Current Risk Register
 
