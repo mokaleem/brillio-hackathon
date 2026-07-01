@@ -33,6 +33,7 @@ def test_demo_profile_passes_repository_readiness_checks() -> None:
         "demo deploy bundle",
         "production deployment docs",
         "enterprise health checks",
+        "dependency audit gate",
     ]
 
 

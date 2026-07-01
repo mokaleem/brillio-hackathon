@@ -56,6 +56,7 @@ def run_readiness_checks(
     results.append(_check_demo_deploy_bundle(root))
     results.append(_check_production_deployment_docs(root))
     results.append(_check_enterprise_health_checks(root))
+    results.append(_check_dependency_audit_gate(root))
     if profile == "enterprise":
         results.append(_check_enterprise_runtime_env(root, env_file))
     return results
@@ -610,6 +611,58 @@ def _check_enterprise_health_checks(root: Path) -> CheckResult:
         "enterprise health checks",
         not missing_checks,
         "gateway, UI, registry-load, and artifact-storage health signals are covered"
+        if not missing_checks
+        else "missing: " + ", ".join(missing_checks),
+    )
+
+
+def _check_dependency_audit_gate(root: Path) -> CheckResult:
+    audit_script = root / "scripts" / "dependency_audit.py"
+    release_smoke = root / "scripts" / "release_smoke.py"
+    baseline = root / "docs" / "security" / "dependency-audit-baseline.json"
+    enterprise_docs = root / "docs" / "enterprise-readiness.md"
+    production_docs = root / "docs" / "production-deployment.md"
+    tests = root / "backend" / "tests" / "test_dependency_audit.py"
+    required = [
+        audit_script,
+        release_smoke,
+        baseline,
+        enterprise_docs,
+        production_docs,
+        tests,
+    ]
+    missing = [
+        path.relative_to(root).as_posix() for path in required if not path.is_file()
+    ]
+    if missing:
+        return CheckResult(
+            "dependency audit gate",
+            False,
+            "missing: " + ", ".join(missing),
+        )
+
+    audit_script_text = audit_script.read_text(encoding="utf-8")
+    checks = {
+        "pnpm audit": all(
+            token in audit_script_text
+            for token in ('"pnpm"', '"audit"', '"--prod"', '"--audit-level"', '"high"')
+        ),
+        "backend lock export": all(
+            token in audit_script_text
+            for token in ('"uv"', '"export"', '"--locked"')
+        ),
+        "optional pip-audit": "pip-audit" in audit_script_text,
+        "expiring baseline": "\"expires\"" in baseline.read_text(encoding="utf-8"),
+        "release smoke step": "dependency audit gate" in release_smoke.read_text(encoding="utf-8"),
+        "enterprise docs": "Dependency Audit Gate" in enterprise_docs.read_text(encoding="utf-8"),
+        "production docs": "scripts\\dependency_audit.py" in production_docs.read_text(encoding="utf-8"),
+        "tests": "test_evaluate_findings_fails_unapproved_and_expired_entries" in tests.read_text(encoding="utf-8"),
+    }
+    missing_checks = [name for name, ok in checks.items() if not ok]
+    return CheckResult(
+        "dependency audit gate",
+        not missing_checks,
+        "release smoke fails on new high/critical dependency advisories and expired exceptions"
         if not missing_checks
         else "missing: " + ", ".join(missing_checks),
     )

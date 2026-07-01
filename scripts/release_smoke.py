@@ -32,6 +32,11 @@ def build_release_smoke_commands(
             ("python", "scripts/production_readiness.py"),
         ),
         ReleaseSmokeCommand(
+            "dependency audit gate",
+            root,
+            ("python", "scripts/dependency_audit.py"),
+        ),
+        ReleaseSmokeCommand(
             "backend router and demo smoke tests",
             backend,
             (
