@@ -191,10 +191,18 @@ Production operators must decide which layer owns retention:
 Run these gates before every production promotion:
 
 ```powershell
+python scripts\dependency_audit.py
 python scripts\production_readiness.py
 python scripts\production_readiness.py --profile enterprise --env-file path\to\enterprise.env
 python scripts\release_smoke.py --skip-e2e
 ```
+
+`scripts\dependency_audit.py` exports the backend lock with `uv export --locked`
+and runs `pnpm audit --prod --audit-level high` against frontend production
+dependencies. High/critical findings must be fixed or represented by a
+short-lived entry in `docs/security/dependency-audit-baseline.json`. Set
+`DEERFLOW_RUN_PIP_AUDIT=1` when the release environment is allowed to run the
+networked Python `pip-audit` check.
 
 Then verify the live deployment:
 

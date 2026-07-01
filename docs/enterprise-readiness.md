@@ -122,7 +122,7 @@ download action without duplicating endpoint details.
 
 - [x] Add production compose/Kubernetes guidance separate from the hackathon demo bundle.
 - [x] Add health checks that cover gateway, UI, registry load, and artifact storage.
-- [ ] Add dependency audit commands to the release gate.
+- [x] Add dependency audit commands to the release gate.
 - [ ] Add rollback instructions and release owner checklist.
 
 Acceptance criteria:
@@ -157,6 +157,32 @@ Production health uses separate liveness and readiness signals:
 `/health` and `/api/health` prove processes are alive. `/api/readiness` is the
 operator gate that distinguishes partial startup from a deployment that can
 serve registry-backed chat and generated artifacts.
+
+### Dependency Audit Gate
+
+Dependency audit enforcement now runs as part of `scripts/release_smoke.py`.
+The gate does three things:
+
+- Exports the backend `uv.lock` with `uv export --locked` so Python dependency
+  resolution cannot drift during release validation.
+- Runs `pnpm audit --prod --audit-level high --json` for the frontend.
+- Fails on any unapproved high/critical advisory or any approved exception past
+  its expiry date.
+
+Known frontend transitive findings are tracked in
+`docs/security/dependency-audit-baseline.json` with an owner, reason, and expiry.
+The current baseline covers Nextra docs-rendering dependencies that cannot be
+patched directly without a compatible upstream release. New high/critical
+findings must be fixed, upgraded away, or added to the baseline with an explicit
+short-lived exception before a production promotion.
+
+Optional networked Python vulnerability scanning is available for hardened
+release runs:
+
+```powershell
+$env:DEERFLOW_RUN_PIP_AUDIT = "1"
+python scripts\dependency_audit.py
+```
 
 ## Current Risk Register
 
