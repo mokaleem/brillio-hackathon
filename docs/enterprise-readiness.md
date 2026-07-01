@@ -120,7 +120,7 @@ download action without duplicating endpoint details.
 
 ## Phase 4: Deployment Hardening
 
-- [ ] Add production compose/Kubernetes guidance separate from the hackathon demo bundle.
+- [x] Add production compose/Kubernetes guidance separate from the hackathon demo bundle.
 - [ ] Add health checks that cover gateway, UI, registry load, and artifact storage.
 - [ ] Add dependency audit commands to the release gate.
 - [ ] Add rollback instructions and release owner checklist.
@@ -130,6 +130,14 @@ Acceptance criteria:
 - A fresh operator can deploy from docs without asking the implementation team.
 - Health checks distinguish partial startup from full readiness.
 - Release rollback is documented before production use.
+
+### Production Deployment Guide
+
+Production deployment guidance now lives in `docs/production-deployment.md`.
+It is intentionally separate from the hackathon demo bundle and covers strict
+runtime defaults, Docker Compose guidance, Kubernetes service boundaries,
+storage/retention expectations, release validation, rollback steps, and the
+release owner checklist.
 
 ## Current Risk Register
 
