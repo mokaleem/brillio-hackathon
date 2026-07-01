@@ -203,6 +203,9 @@ def _check_import_guardrails(root: Path) -> CheckResult:
         and "_import_manifest_policy_errors" in text
     )
     has_source_allowlist = "DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES" in text
+    has_rejected_import_audit = (
+        "extension.import.rejected" in text and "record_audit_event" in text
+    )
     if not has_byte_limit:
         return CheckResult(
             "import guardrails", False, "default 512 KiB manifest limit is missing"
@@ -231,10 +234,16 @@ def _check_import_guardrails(root: Path) -> CheckResult:
             False,
             "registry source allowlist validation is missing",
         )
+    if not has_rejected_import_audit:
+        return CheckResult(
+            "import guardrails",
+            False,
+            "rejected registry imports are not audited",
+        )
     return CheckResult(
         "import guardrails",
         True,
-        "byte/count limits, schema versions, source allowlist, and entrypoint prefix validation enabled",
+        "byte/count limits, schema versions, source allowlist, rejected-import audit, and entrypoint prefix validation enabled",
     )
 
 

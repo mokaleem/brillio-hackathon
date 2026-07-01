@@ -223,6 +223,11 @@ Blocked by default:
 - Python tool/agent entrypoints that are not `module:function`.
 - Path traversal, absolute paths, backslashes, control characters, or entrypoints outside the allowed prefix list.
 
+Rejected preview and commit attempts are written to the harness audit log as
+`extension.import.rejected` events. The record includes the operation, manifest
+SHA-256 hash, payload size, selected descriptor keys, source identifiers,
+errors, and warnings. The raw registry JSON is not stored in the audit row.
+
 Preview warnings:
 
 - Non-local source values: `registry`, `package`, or `url`.

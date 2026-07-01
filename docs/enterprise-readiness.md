@@ -36,13 +36,14 @@ For enterprise deployments, keep `docker/hackathon-demo.env` or an equivalent ru
 - [x] Require explicit source provenance when source allowlists are configured.
 - [x] Add registry schema version negotiation and clear compatibility errors.
 - [x] Add optional registry source allowlists for enterprise deployments.
-- [ ] Add audit rows for rejected imports, not only committed imports.
+- [x] Add audit rows for rejected imports, not only committed imports.
 
 Acceptance criteria:
 
 - Unsafe external registries fail closed before import.
 - Operators can explain why a descriptor was rejected.
 - Production can restrict imports to approved sources.
+- Rejected import audit rows include manifest hash/size, selected keys, source identifiers, and validation messages without storing raw registry JSON.
 
 ## Phase 3: Runtime Controls
 
