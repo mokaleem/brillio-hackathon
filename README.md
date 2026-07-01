@@ -46,6 +46,10 @@ DeerFlow has newly integrated the intelligent search and crawling toolset indepe
   - [InfoQuest](#infoquest)
   - [Table of Contents](#table-of-contents)
   - [One-Line Agent Setup](#one-line-agent-setup)
+  - [Internal Assistant Setup](#internal-assistant-setup)
+    - [Local Hackathon Setup](#local-hackathon-setup)
+    - [Azure Setup Overview](#azure-setup-overview)
+    - [Enterprise Validation](#enterprise-validation)
   - [Quick Start](#quick-start)
     - [Configuration](#configuration)
     - [Running the Application](#running-the-application)
@@ -90,6 +94,83 @@ Help me clone DeerFlow if needed, then bootstrap it for local development by fol
 ```
 
 That prompt is intended for coding agents. It tells the agent to clone the repo if needed, choose Docker when available, and stop with the exact next command plus any missing config the user still needs to provide.
+
+## Internal Assistant Setup
+
+This fork includes an enterprise-ready internal assistant layer on top of
+DeerFlow: dynamic registry loading for agents, MCPs, tools, and skills; a
+separable UI/Gateway boundary; a harness package that can remain SDK-shaped; and
+release gates for readiness, dependency audit, observability, and rollback.
+
+### Local Hackathon Setup
+
+Prerequisites: Python 3.12+, Node.js 22+, pnpm, uv, and Docker if you want the
+split demo bundle. On Windows, run shell-backed `make` targets from Git Bash.
+
+Fast local demo:
+
+```bash
+make demo-config
+make doctor
+make demo-smoke
+make dev
+```
+
+Add a real model key such as `OPENAI_API_KEY` to `.env` before live chat. The
+demo smoke path validates registry loading and generates sample HTML, CSV, and
+PDF artifacts without calling an LLM. Open the app at `http://localhost:2026`.
+
+Split UI/Gateway demo:
+
+```bash
+cp docker/hackathon-demo.env.example docker/hackathon-demo.env
+python scripts/run_hackathon_demo.py
+```
+
+This starts the UI on `http://localhost:3000` and Gateway on
+`http://localhost:8001`, proving the UI can be separated from the harness and
+Gateway runtime.
+
+### Azure Setup Overview
+
+Use separate Azure services for the UI and Gateway. A practical starting point
+is Azure Container Apps plus Azure Container Registry, Azure Key Vault, and
+Application Insights/Log Analytics. For larger regulated deployments, move the
+Gateway to AKS and back `DEER_FLOW_HOME` with a managed persistent storage
+strategy.
+
+Minimum production posture:
+
+```bash
+DEER_FLOW_AUTH_DISABLED=0
+GATEWAY_ENABLE_DOCS=false
+DEER_FLOW_TRUSTED_ORIGINS=https://assistant.example.com
+GATEWAY_CORS_ORIGINS=https://assistant.example.com
+DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS=low,medium
+DEERFLOW_EXTENSION_REQUIRE_HIGH_RISK_APPROVAL=true
+DEERFLOW_PYTHON_FUNCTION_ALLOWLIST=internal_tools.python_examples:summarize_metrics
+```
+
+Store `BETTER_AUTH_SECRET`, model credentials, tracing keys, and any registry
+source credentials in Key Vault or Container Apps secrets, not in checked-in env
+files. See [Local and Azure Setup](docs/local-and-azure-setup.md) and
+[Production Deployment](docs/production-deployment.md) for the full checklist.
+
+### Enterprise Validation
+
+Run these before demo or release:
+
+```bash
+python scripts/production_readiness.py
+python scripts/dependency_audit.py
+python scripts/release_smoke.py --skip-e2e
+```
+
+For production-like environments, also run:
+
+```bash
+python scripts/production_readiness.py --profile enterprise --env-file path/to/enterprise.env
+```
 
 ## Quick Start
 
@@ -755,6 +836,12 @@ See [backend/docs/TUI.md](backend/docs/TUI.md) for the full guide.
 - [Configuration Guide](backend/docs/CONFIGURATION.md) - Setup and configuration instructions
 - [Architecture Overview](backend/CLAUDE.md) - Technical architecture details
 - [Backend Architecture](backend/README.md) - Backend architecture and API reference
+- [Local and Azure Setup](docs/local-and-azure-setup.md) - Local demo and Azure deployment guide
+- [Capability Development](docs/capability-development.md) - Create agents, MCPs, tools, and registry imports
+- [Skill Capabilities](docs/skill-capabilities.md) - Add internal skills and register them safely
+- [Architecture and Flow](docs/architecture-flow.md) - System diagrams and runtime flow
+- [Presentation Deck Outline](docs/presentation-deck-outline.md) - 15 slide demo narrative
+- [Observability Guide](docs/observability.md) - Health, audit evidence, LangSmith, Langfuse, and Azure logging
 
 ## ⚠️ Security Notice
 
