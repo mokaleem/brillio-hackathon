@@ -52,6 +52,33 @@ def test_audit_executions_returns_empty_for_missing_log(monkeypatch, tmp_path: P
     assert response.json()["records"] == []
 
 
+def test_audit_evidence_exports_compliance_bundle(monkeypatch, tmp_path: Path) -> None:
+    log_path = tmp_path / "audit" / "executions.jsonl"
+    log_path.parent.mkdir()
+    records = [
+        _record("tool", "html-report", "success", "2026-06-29T10:00:00Z"),
+        _record("tool", "python-function", "error", "2026-06-29T10:01:00Z"),
+    ]
+    log_path.write_text("\n".join(json.dumps(record) for record in records), encoding="utf-8")
+    monkeypatch.setenv("DEER_FLOW_AUDIT_LOG_PATH", str(log_path))
+
+    with TestClient(_make_admin_app()) as client:
+        response = client.get("/api/audit/evidence")
+
+    assert response.status_code == 200
+    assert response.headers["content-disposition"] == 'attachment; filename="deerflow-audit-evidence.json"'
+    payload = response.json()
+    assert payload["schema_version"] == 1
+    assert payload["source_path"] == str(log_path.resolve())
+    assert payload["summary"] == {
+        "total_records": 2,
+        "status_counts": {"error": 1, "success": 1},
+        "extension_counts": {"html-report": 1, "python-function": 1},
+        "artifact_count": 2,
+    }
+    assert [record["extension"]["name"] for record in payload["records"]] == ["html-report", "python-function"]
+
+
 def _record(kind: str, name: str, status: str, started_at: str) -> dict:
     return {
         "event": "extension.execution",

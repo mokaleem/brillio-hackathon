@@ -50,13 +50,14 @@ Acceptance criteria:
 - [x] Add admin-visible readiness status for auth, model credentials, tracing, registry risk policy, and artifact storage.
 - [x] Add capability-level approval policy defaults for high-risk tools.
 - [x] Add retention controls for run events and generated artifacts.
-- [ ] Add exportable audit evidence for compliance review.
+- [x] Add exportable audit evidence for compliance review.
 
 Acceptance criteria:
 
 - Admins can see misconfiguration before users hit it.
 - High-risk capability use requires intentional enablement.
 - Generated data has a documented retention path.
+- Compliance reviewers can download sanitized audit evidence.
 
 ### Admin Readiness Status
 
@@ -101,6 +102,21 @@ reports a warning when a sweep is disabled.
 The harness exposes SDK-level sweep helpers in `deerflow.retention` so gateway
 jobs, deployment cron jobs, or enterprise schedulers can apply the same policy
 without coupling cleanup logic to the UI.
+
+### Audit Evidence Export
+
+The gateway exposes `GET /api/audit/evidence` for admin users. It returns a
+downloadable `deerflow-audit-evidence.json` bundle with:
+
+- `schema_version` and `generated_at` metadata.
+- Source audit log path.
+- Summary counts by execution status, extension name, and artifact references.
+- Sanitized audit records containing descriptor metadata, input/output
+  summaries, artifact paths, and errors without raw registry manifests or full
+  tool payloads.
+
+The frontend core API exposes `exportAuditEvidence()` so the UI can add a
+download action without duplicating endpoint details.
 
 ## Phase 4: Deployment Hardening
 
