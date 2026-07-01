@@ -107,3 +107,22 @@ def test_readiness_reports_enterprise_misconfiguration(monkeypatch, tmp_path: Pa
     assert components["tracing"]["status"] == "error"
     assert components["registry_policy"]["status"] == "error"
     assert components["api_docs"]["status"] == "warning"
+
+
+def test_readiness_errors_when_high_risk_approval_gate_is_disabled(monkeypatch, tmp_path: Path) -> None:
+    _reset_cached_env_config(monkeypatch)
+    monkeypatch.setenv("DEER_FLOW_HOME", str(tmp_path / "deer-home"))
+    monkeypatch.setenv("OPENAI_API_KEY", "test-model-credential")
+    monkeypatch.setenv("GATEWAY_ENABLE_DOCS", "false")
+    monkeypatch.setenv("DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS", "low,medium,high")
+    monkeypatch.setenv("DEERFLOW_EXTENSION_REQUIRE_HIGH_RISK_APPROVAL", "false")
+
+    with TestClient(_make_admin_app()) as client:
+        response = client.get("/api/readiness")
+
+    assert response.status_code == 200
+    payload = response.json()
+    components = {component["name"]: component for component in payload["components"]}
+    assert payload["status"] == "not_ready"
+    assert components["registry_policy"]["status"] == "error"
+    assert components["registry_policy"]["metadata"]["require_high_risk_approval"] is False

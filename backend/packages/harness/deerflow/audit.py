@@ -38,6 +38,7 @@ def record_extension_execution(
             "risk_level": extension.risk_level,
             "owner": extension.owner,
             "provenance": extension.provenance.model_dump(mode="json") if extension.provenance else None,
+            "approval": extension.approval.model_dump(mode="json") if extension.approval else None,
         },
         input_summary=summarize_value(input_value),
         output_summary=summarize_value(output_value),
