@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, ValidationError
 from app.gateway.deps import require_admin_user
 from deerflow.audit import record_audit_event
 from deerflow.extensions import (
+    ExtensionApproval,
     ExtensionDescriptor,
     ExtensionKind,
     ExtensionManifest,
@@ -62,6 +63,7 @@ class ExtensionResponse(BaseModel):
     icon: str | None = None
     category: str | None = None
     provenance: ExtensionProvenance | None = None
+    approval: ExtensionApproval | None = None
 
 
 class ExtensionsListResponse(BaseModel):

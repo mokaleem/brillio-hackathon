@@ -63,6 +63,16 @@ class ExtensionProvenance(BaseModel):
     source_url: str | None = None
 
 
+class ExtensionApproval(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["pending", "approved", "rejected"] = "pending"
+    approved_by: str | None = None
+    approved_at: str | None = None
+    ticket: str | None = None
+    reason: str | None = None
+
+
 class ExtensionDescriptor(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -82,6 +92,7 @@ class ExtensionDescriptor(BaseModel):
     icon: str | None = None
     category: str | None = None
     provenance: ExtensionProvenance | None = None
+    approval: ExtensionApproval | None = None
 
     @field_validator("name")
     @classmethod

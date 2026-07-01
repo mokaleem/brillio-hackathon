@@ -48,7 +48,7 @@ Acceptance criteria:
 ## Phase 3: Runtime Controls
 
 - [x] Add admin-visible readiness status for auth, model credentials, tracing, registry risk policy, and artifact storage.
-- [ ] Add capability-level approval policy defaults for high-risk tools.
+- [x] Add capability-level approval policy defaults for high-risk tools.
 - [ ] Add retention controls for run events and generated artifacts.
 - [ ] Add exportable audit evidence for compliance review.
 
@@ -73,6 +73,12 @@ Statuses:
 This endpoint is intentionally separate from `/health`: `/health` remains a
 simple liveness probe, while `/api/readiness` is an authenticated operator view
 for production configuration.
+
+High-risk capabilities now require two explicit operator decisions before
+runtime materialization: `DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS` must include
+`high`, and the descriptor must include `approval.status: "approved"` unless
+`DEERFLOW_EXTENSION_REQUIRE_HIGH_RISK_APPROVAL=false` is set for trusted local
+development.
 
 ## Phase 4: Deployment Hardening
 

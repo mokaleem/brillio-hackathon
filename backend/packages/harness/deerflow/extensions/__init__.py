@@ -1,4 +1,4 @@
-from deerflow.extensions.descriptors import ExtensionDescriptor, ExtensionKind, ExtensionManifest, ExtensionProvenance, ExtensionSource, RegistryImport
+from deerflow.extensions.descriptors import ExtensionApproval, ExtensionDescriptor, ExtensionKind, ExtensionManifest, ExtensionProvenance, ExtensionSource, RegistryImport
 from deerflow.extensions.entrypoints import execute_python_entrypoint, resolve_python_entrypoint
 from deerflow.extensions.loader import ExtensionCatalog, load_extension_catalog
 from deerflow.extensions.manifest import load_extension_manifest
@@ -15,6 +15,7 @@ from deerflow.extensions.validation import ExtensionRegistryHealth, validate_ext
 
 __all__ = [
     "ExtensionCatalog",
+    "ExtensionApproval",
     "ExtensionDescriptor",
     "ExtensionKind",
     "ExtensionManifest",

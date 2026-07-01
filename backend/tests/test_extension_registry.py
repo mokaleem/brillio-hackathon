@@ -432,7 +432,7 @@ def test_materialize_tool_blocks_high_risk_by_default(monkeypatch) -> None:
         materialize_tool(extension)
 
 
-def test_materialize_tool_allows_high_risk_when_policy_allows_high(monkeypatch) -> None:
+def test_materialize_tool_requires_approval_when_policy_allows_high(monkeypatch) -> None:
     monkeypatch.setenv("DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS", "low,medium,high")
     extension = ExtensionManifest.model_validate(
         {
@@ -445,6 +445,34 @@ def test_materialize_tool_allows_high_risk_when_policy_allows_high(monkeypatch) 
                     "source": "registry",
                     "entrypoint": "deerflow.tools.builtins.clarification_tool:ask_clarification_tool",
                     "risk_level": "high",
+                }
+            ],
+        }
+    ).extensions[0]
+
+    with pytest.raises(ExtensionPermissionError, match="requires descriptor approval"):
+        materialize_tool(extension)
+
+
+def test_materialize_tool_allows_approved_high_risk_when_policy_allows_high(monkeypatch) -> None:
+    monkeypatch.setenv("DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS", "low,medium,high")
+    extension = ExtensionManifest.model_validate(
+        {
+            "version": 1,
+            "extensions": [
+                {
+                    "kind": "tool",
+                    "name": "approved-high-risk-tool",
+                    "enabled": True,
+                    "source": "registry",
+                    "entrypoint": "deerflow.tools.builtins.clarification_tool:ask_clarification_tool",
+                    "risk_level": "high",
+                    "approval": {
+                        "status": "approved",
+                        "approved_by": "security@example.com",
+                        "approved_at": "2026-07-01T00:00:00Z",
+                        "ticket": "SEC-123",
+                    },
                 }
             ],
         }

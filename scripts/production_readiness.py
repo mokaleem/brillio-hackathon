@@ -47,6 +47,7 @@ def run_readiness_checks(
     results.append(_check_demo_registry(root))
     results.append(_check_import_guardrails(root))
     results.append(_check_admin_readiness_endpoint(root))
+    results.append(_check_runtime_approval_policy(root))
     results.append(_check_generated_registry_gitignored(root))
     results.append(_check_frontend_env_example(root))
     results.append(_check_demo_docs(root))
@@ -286,6 +287,40 @@ def _check_admin_readiness_endpoint(root: Path) -> CheckResult:
         "admin-only readiness endpoint covers auth, credentials, tracing, registry policy, and artifact storage"
         if not missing_phrases
         else "missing: " + ", ".join(missing_phrases),
+    )
+
+
+def _check_runtime_approval_policy(root: Path) -> CheckResult:
+    descriptors = root / "backend" / "packages" / "harness" / "deerflow" / "extensions" / "descriptors.py"
+    policy = root / "backend" / "packages" / "harness" / "deerflow" / "extensions" / "policy.py"
+    readiness = root / "backend" / "app" / "gateway" / "routers" / "readiness.py"
+    docs = root / "docs" / "extension-registry-schema.md"
+    tests = root / "backend" / "tests" / "test_extension_registry.py"
+    missing = [
+        path.relative_to(root).as_posix()
+        for path in (descriptors, policy, readiness, docs, tests)
+        if not path.is_file()
+    ]
+    if missing:
+        return CheckResult(
+            "runtime approval policy", False, "missing: " + ", ".join(missing)
+        )
+
+    checks = {
+        "ExtensionApproval descriptor": "ExtensionApproval" in descriptors.read_text(encoding="utf-8"),
+        "high-risk approval env": "DEERFLOW_EXTENSION_REQUIRE_HIGH_RISK_APPROVAL" in policy.read_text(encoding="utf-8"),
+        "approval enforcement": "requires descriptor approval" in policy.read_text(encoding="utf-8"),
+        "readiness approval status": "require_high_risk_approval" in readiness.read_text(encoding="utf-8"),
+        "approval docs": "`approval`" in docs.read_text(encoding="utf-8"),
+        "approval tests": "test_materialize_tool_allows_approved_high_risk" in tests.read_text(encoding="utf-8"),
+    }
+    missing_checks = [name for name, ok in checks.items() if not ok]
+    return CheckResult(
+        "runtime approval policy",
+        not missing_checks,
+        "high-risk capabilities require descriptor approval by default"
+        if not missing_checks
+        else "missing: " + ", ".join(missing_checks),
     )
 
 

@@ -19,6 +19,7 @@ from app.gateway.deps import require_admin_user
 from deerflow.config.paths import Paths
 from deerflow.config.tracing_config import get_tracing_config
 from deerflow.extensions.policy import (
+    REQUIRE_HIGH_RISK_APPROVAL_ENV_VAR,
     RUNTIME_RISK_ENV_VAR,
     ExtensionPermissionError,
     ExtensionRuntimePolicy,
@@ -161,18 +162,31 @@ def _registry_policy_status() -> ReadinessComponent:
             metadata={"env_var": RUNTIME_RISK_ENV_VAR},
         )
     allowed = sorted(policy.allowed_risk_levels)
+    metadata = {
+        "allowed_risk_levels": allowed,
+        "env_var": RUNTIME_RISK_ENV_VAR,
+        "require_high_risk_approval": policy.require_high_risk_approval,
+        "approval_env_var": REQUIRE_HIGH_RISK_APPROVAL_ENV_VAR,
+    }
+    if "high" in allowed and not policy.require_high_risk_approval:
+        return ReadinessComponent(
+            name="registry_policy",
+            status="error",
+            detail="High-risk extensions are allowed without descriptor approval.",
+            metadata=metadata,
+        )
     if "high" in allowed:
         return ReadinessComponent(
             name="registry_policy",
             status="warning",
-            detail="High-risk extensions are allowed by runtime policy.",
-            metadata={"allowed_risk_levels": allowed, "env_var": RUNTIME_RISK_ENV_VAR},
+            detail="High-risk extensions are allowed only when descriptor approval metadata is present.",
+            metadata=metadata,
         )
     return ReadinessComponent(
         name="registry_policy",
         status="ok",
         detail="Runtime extension policy blocks high-risk extensions by default.",
-        metadata={"allowed_risk_levels": allowed, "env_var": RUNTIME_RISK_ENV_VAR},
+        metadata=metadata,
     )
 
 
