@@ -24,6 +24,7 @@ from app.gateway.routers import (
     mcp,
     memory,
     models,
+    readiness,
     runs,
     skills,
     suggestions,
@@ -346,6 +347,10 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
                 "name": "health",
                 "description": "Health check and system status endpoints",
             },
+            {
+                "name": "readiness",
+                "description": "Admin enterprise readiness status endpoints",
+            },
         ],
     )
 
@@ -398,6 +403,9 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # Audit API is mounted at /api/audit
     app.include_router(audit.router)
+
+    # Enterprise readiness API is mounted at /api/readiness
+    app.include_router(readiness.router)
 
     # Suggestions API is mounted at /api/threads/{thread_id}/suggestions
     app.include_router(suggestions.router)

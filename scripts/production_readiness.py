@@ -46,6 +46,7 @@ def run_readiness_checks(
     results.append(_check_required_paths(root))
     results.append(_check_demo_registry(root))
     results.append(_check_import_guardrails(root))
+    results.append(_check_admin_readiness_endpoint(root))
     results.append(_check_generated_registry_gitignored(root))
     results.append(_check_frontend_env_example(root))
     results.append(_check_demo_docs(root))
@@ -244,6 +245,47 @@ def _check_import_guardrails(root: Path) -> CheckResult:
         "import guardrails",
         True,
         "byte/count limits, schema versions, source allowlist, rejected-import audit, and entrypoint prefix validation enabled",
+    )
+
+
+def _check_admin_readiness_endpoint(root: Path) -> CheckResult:
+    router = root / "backend" / "app" / "gateway" / "routers" / "readiness.py"
+    app = root / "backend" / "app" / "gateway" / "app.py"
+    docs = root / "docs" / "enterprise-readiness.md"
+    tests = root / "backend" / "tests" / "test_readiness_router.py"
+    missing = [
+        path.relative_to(root).as_posix()
+        for path in (router, app, docs, tests)
+        if not path.is_file()
+    ]
+    if missing:
+        return CheckResult(
+            "admin readiness endpoint", False, "missing: " + ", ".join(missing)
+        )
+
+    router_text = router.read_text(encoding="utf-8")
+    app_text = app.read_text(encoding="utf-8")
+    docs_text = docs.read_text(encoding="utf-8")
+    required_router_phrases = [
+        'APIRouter(prefix="/api/readiness"',
+        "require_admin_user",
+        "model_credentials",
+        "registry_policy",
+        "artifact_storage",
+    ]
+    missing_phrases = [
+        phrase for phrase in required_router_phrases if phrase not in router_text
+    ]
+    if "readiness.router" not in app_text:
+        missing_phrases.append("gateway router registration")
+    if "Admin Readiness Status" not in docs_text:
+        missing_phrases.append("Admin Readiness Status docs")
+    return CheckResult(
+        "admin readiness endpoint",
+        not missing_phrases,
+        "admin-only readiness endpoint covers auth, credentials, tracing, registry policy, and artifact storage"
+        if not missing_phrases
+        else "missing: " + ", ".join(missing_phrases),
     )
 
 

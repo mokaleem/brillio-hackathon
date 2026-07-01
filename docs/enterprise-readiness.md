@@ -47,7 +47,7 @@ Acceptance criteria:
 
 ## Phase 3: Runtime Controls
 
-- [ ] Add admin-visible readiness status for auth, model credentials, tracing, registry risk policy, and artifact storage.
+- [x] Add admin-visible readiness status for auth, model credentials, tracing, registry risk policy, and artifact storage.
 - [ ] Add capability-level approval policy defaults for high-risk tools.
 - [ ] Add retention controls for run events and generated artifacts.
 - [ ] Add exportable audit evidence for compliance review.
@@ -57,6 +57,22 @@ Acceptance criteria:
 - Admins can see misconfiguration before users hit it.
 - High-risk capability use requires intentional enablement.
 - Generated data has a documented retention path.
+
+### Admin Readiness Status
+
+The gateway exposes `GET /api/readiness` for admin users. It returns an
+overall status plus component rows for authentication, model credentials,
+tracing, runtime registry policy, artifact storage, and API docs exposure.
+
+Statuses:
+
+- `ready`: all components are `ok`.
+- `degraded`: at least one component is `warning` and none are `error`.
+- `not_ready`: at least one component is `error`.
+
+This endpoint is intentionally separate from `/health`: `/health` remains a
+simple liveness probe, while `/api/readiness` is an authenticated operator view
+for production configuration.
 
 ## Phase 4: Deployment Hardening
 
