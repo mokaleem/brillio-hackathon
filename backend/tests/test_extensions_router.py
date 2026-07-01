@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from _router_auth_helpers import make_authed_test_app
@@ -21,6 +22,10 @@ def _make_admin_app() -> FastAPI:
     app = make_authed_test_app(user_factory=_admin_user)
     app.include_router(extensions.router)
     return app
+
+
+def _read_audit_records(path: Path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
 def test_extensions_router_lists_default_manifest() -> None:
@@ -419,11 +424,13 @@ def test_extensions_import_preview_rejects_unsupported_schema_version(monkeypatc
 
 def test_extensions_import_preview_enforces_source_allowlist(monkeypatch, tmp_path: Path) -> None:
     base_manifest = tmp_path / "registries" / "internal_extensions.example.json"
+    audit_log = tmp_path / "audit.jsonl"
     base_manifest.parent.mkdir()
     base_manifest.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
     monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
     monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(base_manifest))
     monkeypatch.setenv("DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES", "approved-registry")
+    monkeypatch.setenv("DEER_FLOW_AUDIT_LOG_PATH", str(audit_log))
 
     manifest_json = """
     {
@@ -450,6 +457,16 @@ def test_extensions_import_preview_enforces_source_allowlist(monkeypatch, tmp_pa
     payload = response.json()
     assert payload["valid"] is False
     assert "DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES" in payload["errors"][0]
+    audit_text = audit_log.read_text(encoding="utf-8")
+    records = _read_audit_records(audit_log)
+    assert manifest_json not in audit_text
+    assert records[-1]["event"] == "extension.import.rejected"
+    assert records[-1]["status"] == "rejected"
+    assert records[-1]["extension"]["operation"] == "preview"
+    assert records[-1]["input_summary"]["manifest_sha256"]
+    assert records[-1]["input_summary"]["manifest_bytes"] == len(manifest_json.encode("utf-8"))
+    assert "unknown-registry" in records[-1]["input_summary"]["source_identifiers"]
+    assert "DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES" in records[-1]["error"]["message"]
 
 
 def test_extensions_import_preview_allows_source_hostname(monkeypatch, tmp_path: Path) -> None:
@@ -627,11 +644,13 @@ def test_extensions_import_selected_descriptors(monkeypatch, tmp_path: Path) -> 
 
 def test_extensions_import_enforces_source_allowlist(monkeypatch, tmp_path: Path) -> None:
     base_manifest = tmp_path / "registries" / "internal_extensions.example.json"
+    audit_log = tmp_path / "audit.jsonl"
     base_manifest.parent.mkdir()
     base_manifest.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
     monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
     monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(base_manifest))
     monkeypatch.setenv("DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES", "approved-registry")
+    monkeypatch.setenv("DEER_FLOW_AUDIT_LOG_PATH", str(audit_log))
 
     manifest_json = """
     {
@@ -658,6 +677,15 @@ def test_extensions_import_enforces_source_allowlist(monkeypatch, tmp_path: Path
 
     assert response.status_code == 400
     assert "DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES" in response.json()["detail"]
+    audit_text = audit_log.read_text(encoding="utf-8")
+    records = _read_audit_records(audit_log)
+    assert manifest_json not in audit_text
+    assert records[-1]["event"] == "extension.import.rejected"
+    assert records[-1]["status"] == "rejected"
+    assert records[-1]["extension"]["operation"] == "commit"
+    assert records[-1]["input_summary"]["selected"] == ["tool:forecast-export"]
+    assert records[-1]["input_summary"]["extension_keys"] == ["tool:forecast-export"]
+    assert "DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES" in records[-1]["output_summary"]["errors"][0]
 
 
 def test_extensions_remove_imported_descriptor(monkeypatch, tmp_path: Path) -> None:
