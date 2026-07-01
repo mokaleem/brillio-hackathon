@@ -25,6 +25,7 @@ def test_demo_profile_passes_repository_readiness_checks() -> None:
         "import guardrails",
         "admin readiness endpoint",
         "runtime approval policy",
+        "retention controls",
         "generated registry isolation",
         "frontend env example",
         "demo docs",

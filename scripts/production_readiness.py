@@ -48,6 +48,7 @@ def run_readiness_checks(
     results.append(_check_import_guardrails(root))
     results.append(_check_admin_readiness_endpoint(root))
     results.append(_check_runtime_approval_policy(root))
+    results.append(_check_retention_controls(root))
     results.append(_check_generated_registry_gitignored(root))
     results.append(_check_frontend_env_example(root))
     results.append(_check_demo_docs(root))
@@ -319,6 +320,46 @@ def _check_runtime_approval_policy(root: Path) -> CheckResult:
         "runtime approval policy",
         not missing_checks,
         "high-risk capabilities require descriptor approval by default"
+        if not missing_checks
+        else "missing: " + ", ".join(missing_checks),
+    )
+
+
+def _check_retention_controls(root: Path) -> CheckResult:
+    config = root / "backend" / "packages" / "harness" / "deerflow" / "config" / "run_events_config.py"
+    store_base = root / "backend" / "packages" / "harness" / "deerflow" / "runtime" / "events" / "store" / "base.py"
+    memory_store = root / "backend" / "packages" / "harness" / "deerflow" / "runtime" / "events" / "store" / "memory.py"
+    jsonl_store = root / "backend" / "packages" / "harness" / "deerflow" / "runtime" / "events" / "store" / "jsonl.py"
+    db_store = root / "backend" / "packages" / "harness" / "deerflow" / "runtime" / "events" / "store" / "db.py"
+    retention = root / "backend" / "packages" / "harness" / "deerflow" / "retention.py"
+    readiness = root / "backend" / "app" / "gateway" / "routers" / "readiness.py"
+    docs = root / "docs" / "enterprise-readiness.md"
+    tests = root / "backend" / "tests" / "test_run_event_store.py"
+    missing = [
+        path.relative_to(root).as_posix()
+        for path in (config, store_base, memory_store, jsonl_store, db_store, retention, readiness, docs, tests)
+        if not path.is_file()
+    ]
+    if missing:
+        return CheckResult("retention controls", False, "missing: " + ", ".join(missing))
+
+    checks = {
+        "event retention config": "retention_days" in config.read_text(encoding="utf-8"),
+        "artifact retention config": "artifact_retention_days" in config.read_text(encoding="utf-8"),
+        "store retention contract": "delete_older_than" in store_base.read_text(encoding="utf-8"),
+        "memory retention implementation": "delete_older_than" in memory_store.read_text(encoding="utf-8"),
+        "jsonl retention implementation": "delete_older_than" in jsonl_store.read_text(encoding="utf-8"),
+        "db retention implementation": "delete_older_than" in db_store.read_text(encoding="utf-8"),
+        "artifact sweep helper": "sweep_generated_artifacts" in retention.read_text(encoding="utf-8"),
+        "readiness metadata": "retention_policy" in readiness.read_text(encoding="utf-8"),
+        "retention docs": "Retention Controls" in docs.read_text(encoding="utf-8"),
+        "retention tests": "delete_older_than" in tests.read_text(encoding="utf-8"),
+    }
+    missing_checks = [name for name, ok in checks.items() if not ok]
+    return CheckResult(
+        "retention controls",
+        not missing_checks,
+        "run events and generated artifacts have configurable retention sweeps"
         if not missing_checks
         else "missing: " + ", ".join(missing_checks),
     )

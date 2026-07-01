@@ -16,6 +16,7 @@ from app.gateway.auth_disabled import (
 )
 from app.gateway.config import get_gateway_config
 from app.gateway.deps import require_admin_user
+from deerflow.config.app_config import get_app_config
 from deerflow.config.paths import Paths
 from deerflow.config.tracing_config import get_tracing_config
 from deerflow.extensions.policy import (
@@ -71,6 +72,7 @@ def build_readiness_components() -> list[ReadinessComponent]:
         _tracing_status(),
         _registry_policy_status(),
         _artifact_storage_status(),
+        _retention_policy_status(),
         _api_docs_status(),
     ]
 
@@ -217,6 +219,36 @@ def _artifact_storage_status() -> ReadinessComponent:
         status="ok",
         detail="Artifact base directory is writable.",
         metadata={"base_dir": str(base_dir), "host_base_dir": str(host_base_dir)},
+    )
+
+
+def _retention_policy_status() -> ReadinessComponent:
+    try:
+        run_events = get_app_config().run_events
+    except Exception as exc:
+        return ReadinessComponent(
+            name="retention_policy",
+            status="error",
+            detail=f"Unable to load run event retention policy: {exc}",
+        )
+
+    metadata = {
+        "run_event_retention_days": run_events.retention_days,
+        "artifact_retention_days": run_events.artifact_retention_days,
+    }
+    disabled = [name for name, value in metadata.items() if value is None]
+    if disabled:
+        return ReadinessComponent(
+            name="retention_policy",
+            status="warning",
+            detail="One or more retention sweeps are disabled.",
+            metadata=metadata,
+        )
+    return ReadinessComponent(
+        name="retention_policy",
+        status="ok",
+        detail="Run event and generated artifact retention sweeps are configured.",
+        metadata=metadata,
     )
 
 

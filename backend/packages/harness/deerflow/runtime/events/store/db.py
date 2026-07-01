@@ -313,3 +313,12 @@ class DbRunEventStore(RunEventStore):
                 await session.execute(delete(RunEventRow).where(*count_conditions))
                 await session.commit()
             return count
+
+    async def delete_older_than(self, cutoff: datetime):
+        async with self._sf() as session:
+            count_stmt = select(func.count()).select_from(RunEventRow).where(RunEventRow.created_at < cutoff)
+            count = await session.scalar(count_stmt) or 0
+            if count > 0:
+                await session.execute(delete(RunEventRow).where(RunEventRow.created_at < cutoff))
+                await session.commit()
+            return count

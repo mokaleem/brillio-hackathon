@@ -1307,10 +1307,14 @@ database:
 #   backend: memory
 #   max_trace_content: 10240    # Truncation threshold for trace content (db backend, bytes)
 #   track_token_usage: true     # Accumulate token counts to RunRow
+#   retention_days: 30          # Delete run events older than N days during retention sweeps; null disables event sweeps
+#   artifact_retention_days: 30 # Delete generated artifacts older than N days during retention sweeps; null disables artifact sweeps
 run_events:
   backend: memory
   max_trace_content: 10240
   track_token_usage: true
+  retention_days: 30
+  artifact_retention_days: 30
 
 # ============================================================================
 # User-Owned IM Channel Connections
