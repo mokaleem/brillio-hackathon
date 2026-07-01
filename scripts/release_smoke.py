@@ -27,6 +27,11 @@ def build_release_smoke_commands(
     frontend = root / "frontend"
     commands = [
         ReleaseSmokeCommand(
+            "production readiness checks",
+            root,
+            ("python", "scripts/production_readiness.py"),
+        ),
+        ReleaseSmokeCommand(
             "backend router and demo smoke tests",
             backend,
             (
@@ -124,7 +129,9 @@ def _resolve_command(command: tuple[str, ...]) -> tuple[str, ...]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run the hackathon release smoke gate.")
+    parser = argparse.ArgumentParser(
+        description="Run the hackathon release smoke gate."
+    )
     parser.add_argument("--project-root", type=Path, default=REPO_ROOT)
     parser.add_argument(
         "--skip-e2e",
@@ -143,7 +150,9 @@ def main(argv: list[str] | None = None) -> int:
         include_e2e=not args.skip_e2e,
         dry_run=args.dry_run,
     )
-    print("Release smoke passed" if not args.dry_run else "Release smoke dry run complete")
+    print(
+        "Release smoke passed" if not args.dry_run else "Release smoke dry run complete"
+    )
     return 0
 
 

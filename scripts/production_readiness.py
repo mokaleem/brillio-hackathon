@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -22,18 +24,34 @@ VALID_KINDS = {"agent", "mcp", "tool", "skill"}
 VALID_SOURCES = {"local", "registry", "package", "url"}
 VALID_RISK_LEVELS = {"low", "medium", "high"}
 EXTENSION_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+MODEL_CREDENTIAL_ENV_VARS = (
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "GEMINI_API_KEY",
+    "AZURE_OPENAI_API_KEY",
+)
+PLACEHOLDER_AUTH_SECRET = "replace-with-a-long-random-demo-secret"
+TRUTHY_VALUES = {"1", "true", "yes", "on"}
 
 
-def run_readiness_checks(project_root: Path = REPO_ROOT) -> list[CheckResult]:
+def run_readiness_checks(
+    project_root: Path = REPO_ROOT,
+    *,
+    profile: Literal["demo", "enterprise"] = "demo",
+    env_file: Path | None = None,
+) -> list[CheckResult]:
     root = project_root.resolve(strict=False)
     results: list[CheckResult] = []
     results.append(_check_required_paths(root))
     results.append(_check_demo_registry(root))
-    results.append(_check_import_guardrails())
+    results.append(_check_import_guardrails(root))
     results.append(_check_generated_registry_gitignored(root))
     results.append(_check_frontend_env_example(root))
     results.append(_check_demo_docs(root))
     results.append(_check_demo_deploy_bundle(root))
+    if profile == "enterprise":
+        results.append(_check_enterprise_runtime_env(root, env_file))
     return results
 
 
@@ -48,11 +66,15 @@ def _check_required_paths(root: Path) -> CheckResult:
         root / "registries" / "demo_extensions.json",
         root / "docs" / "extension-registry-schema.md",
     ]
-    missing = [path.relative_to(root).as_posix() for path in required if not path.exists()]
+    missing = [
+        path.relative_to(root).as_posix() for path in required if not path.exists()
+    ]
     return CheckResult(
         "required paths",
         not missing,
-        "all expected harness/UI/internal registry paths exist" if not missing else "missing: " + ", ".join(missing),
+        "all expected harness/UI/internal registry paths exist"
+        if not missing
+        else "missing: " + ", ".join(missing),
     )
 
 
@@ -67,13 +89,23 @@ def _check_demo_registry(root: Path) -> CheckResult:
     if errors:
         return CheckResult("demo registry", False, "; ".join(errors[:3]))
 
-    enabled_agents = {extension["name"] for extension in extensions if extension.get("kind") == "agent" and extension.get("enabled") is True}
-    enabled_tools = {extension["name"] for extension in extensions if extension.get("kind") == "tool" and extension.get("enabled") is True}
+    enabled_agents = {
+        extension["name"]
+        for extension in extensions
+        if extension.get("kind") == "agent" and extension.get("enabled") is True
+    }
+    enabled_tools = {
+        extension["name"]
+        for extension in extensions
+        if extension.get("kind") == "tool" and extension.get("enabled") is True
+    }
     missing_tools = sorted(REQUIRED_DEMO_TOOLS - enabled_tools)
     if "reporting-agent" not in enabled_agents:
         return CheckResult("demo registry", False, "reporting-agent is not enabled")
     if missing_tools:
-        return CheckResult("demo registry", False, "missing enabled tools: " + ", ".join(missing_tools))
+        return CheckResult(
+            "demo registry", False, "missing enabled tools: " + ", ".join(missing_tools)
+        )
     return CheckResult(
         "demo registry",
         True,
@@ -148,26 +180,61 @@ def _validate_extensions(extensions: object) -> list[str]:
     return errors
 
 
-def _check_import_guardrails() -> CheckResult:
-    router_path = REPO_ROOT / "backend" / "app" / "gateway" / "routers" / "extensions.py"
+def _check_import_guardrails(root: Path) -> CheckResult:
+    router_path = root / "backend" / "app" / "gateway" / "routers" / "extensions.py"
     text = router_path.read_text(encoding="utf-8")
-    required_prefixes = {"internal_tools.", "internal_agents.", "internal_skills/", "deerflow."}
-    missing_prefixes = sorted(prefix for prefix in required_prefixes if prefix not in text)
+    required_prefixes = {
+        "internal_tools.",
+        "internal_agents.",
+        "internal_skills/",
+        "deerflow.",
+    }
+    missing_prefixes = sorted(
+        prefix for prefix in required_prefixes if prefix not in text
+    )
     has_byte_limit = "_DEFAULT_IMPORT_MAX_BYTES = 512 * 1024" in text
     has_count_limit = "_DEFAULT_IMPORT_MAX_EXTENSIONS = 200" in text
-    has_safety_validation = "_import_safety_messages" in text and "DEERFLOW_EXTENSION_IMPORT_ENTRYPOINT_PREFIXES" in text
+    has_safety_validation = (
+        "_import_safety_messages" in text
+        and "DEERFLOW_EXTENSION_IMPORT_ENTRYPOINT_PREFIXES" in text
+    )
+    has_schema_policy = (
+        "DEERFLOW_EXTENSION_IMPORT_SCHEMA_VERSIONS" in text
+        and "_import_manifest_policy_errors" in text
+    )
+    has_source_allowlist = "DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES" in text
     if not has_byte_limit:
-        return CheckResult("import guardrails", False, "default 512 KiB manifest limit is missing")
+        return CheckResult(
+            "import guardrails", False, "default 512 KiB manifest limit is missing"
+        )
     if not has_count_limit:
-        return CheckResult("import guardrails", False, "default 200 descriptor limit is missing")
+        return CheckResult(
+            "import guardrails", False, "default 200 descriptor limit is missing"
+        )
     if missing_prefixes:
-        return CheckResult("import guardrails", False, "missing allowed prefixes: " + ", ".join(missing_prefixes))
+        return CheckResult(
+            "import guardrails",
+            False,
+            "missing allowed prefixes: " + ", ".join(missing_prefixes),
+        )
     if not has_safety_validation:
-        return CheckResult("import guardrails", False, "import safety validation helper is missing")
+        return CheckResult(
+            "import guardrails", False, "import safety validation helper is missing"
+        )
+    if not has_schema_policy:
+        return CheckResult(
+            "import guardrails", False, "schema version policy validation is missing"
+        )
+    if not has_source_allowlist:
+        return CheckResult(
+            "import guardrails",
+            False,
+            "registry source allowlist validation is missing",
+        )
     return CheckResult(
         "import guardrails",
         True,
-        "512 KiB byte limit, 200 descriptor limit, entrypoint prefix validation enabled",
+        "byte/count limits, schema versions, source allowlist, and entrypoint prefix validation enabled",
     )
 
 
@@ -179,14 +246,18 @@ def _check_generated_registry_gitignored(root: Path) -> CheckResult:
     return CheckResult(
         "generated registry isolation",
         ignored_in_file and not tracked,
-        "registries/imported_extensions.json is gitignored and untracked" if ignored_in_file and not tracked else f"gitignored={ignored_in_file}, tracked={tracked}",
+        "registries/imported_extensions.json is gitignored and untracked"
+        if ignored_in_file and not tracked
+        else f"gitignored={ignored_in_file}, tracked={tracked}",
     )
 
 
 def _check_frontend_env_example(root: Path) -> CheckResult:
     env_example = root / "frontend" / ".env.example"
     if not env_example.is_file():
-        return CheckResult("frontend env example", False, "frontend/.env.example is missing")
+        return CheckResult(
+            "frontend env example", False, "frontend/.env.example is missing"
+        )
     text = env_example.read_text(encoding="utf-8")
     required = [
         "NEXT_PUBLIC_BACKEND_BASE_URL",
@@ -198,7 +269,9 @@ def _check_frontend_env_example(root: Path) -> CheckResult:
     return CheckResult(
         "frontend env example",
         not missing,
-        "split UI/gateway deployment variables documented" if not missing else "missing: " + ", ".join(missing),
+        "split UI/gateway deployment variables documented"
+        if not missing
+        else "missing: " + ", ".join(missing),
     )
 
 
@@ -225,13 +298,19 @@ def _check_demo_docs(root: Path) -> CheckResult:
         "NEXT_PUBLIC_BACKEND_BASE_URL",
         "GATEWAY_CORS_ORIGINS",
     ]
-    missing_split_ui = [phrase for phrase in split_ui_required if phrase not in split_ui]
+    missing_split_ui = [
+        phrase for phrase in split_ui_required if phrase not in split_ui
+    ]
     if missing_split_ui:
-        return CheckResult("demo docs", False, "split UI guide missing: " + ", ".join(missing_split_ui))
+        return CheckResult(
+            "demo docs", False, "split UI guide missing: " + ", ".join(missing_split_ui)
+        )
     return CheckResult(
         "demo docs",
         not missing_phrases,
-        "schema, demo guide, and split UI guide present" if not missing_phrases else "schema missing: " + ", ".join(missing_phrases),
+        "schema, demo guide, and split UI guide present"
+        if not missing_phrases
+        else "schema missing: " + ", ".join(missing_phrases),
     )
 
 
@@ -243,9 +322,13 @@ def _check_demo_deploy_bundle(root: Path) -> CheckResult:
     split_ui = root / "docs" / "split-ui-deployment.md"
     gitignore = root / ".gitignore"
     required = [compose, env_example, smoke, launcher, split_ui, gitignore]
-    missing = [path.relative_to(root).as_posix() for path in required if not path.is_file()]
+    missing = [
+        path.relative_to(root).as_posix() for path in required if not path.is_file()
+    ]
     if missing:
-        return CheckResult("demo deploy bundle", False, "missing: " + ", ".join(missing))
+        return CheckResult(
+            "demo deploy bundle", False, "missing: " + ", ".join(missing)
+        )
 
     compose_text = compose.read_text(encoding="utf-8")
     env_text = env_example.read_text(encoding="utf-8")
@@ -273,10 +356,16 @@ def _check_demo_deploy_bundle(root: Path) -> CheckResult:
     required_gitignore_phrases = [
         "docker/hackathon-demo.env",
     ]
-    missing_compose = [phrase for phrase in required_compose_phrases if phrase not in compose_text]
+    missing_compose = [
+        phrase for phrase in required_compose_phrases if phrase not in compose_text
+    ]
     missing_env = [phrase for phrase in required_env_phrases if phrase not in env_text]
-    missing_docs = [phrase for phrase in required_docs_phrases if phrase not in docs_text]
-    missing_gitignore = [phrase for phrase in required_gitignore_phrases if phrase not in gitignore_text]
+    missing_docs = [
+        phrase for phrase in required_docs_phrases if phrase not in docs_text
+    ]
+    missing_gitignore = [
+        phrase for phrase in required_gitignore_phrases if phrase not in gitignore_text
+    ]
     missing_all = [*missing_compose, *missing_env, *missing_docs, *missing_gitignore]
     return CheckResult(
         "demo deploy bundle",
@@ -285,6 +374,97 @@ def _check_demo_deploy_bundle(root: Path) -> CheckResult:
         if not missing_all
         else "missing: " + ", ".join(missing_all[:5]),
     )
+
+
+def _check_enterprise_runtime_env(root: Path, env_file: Path | None) -> CheckResult:
+    path = _resolve_env_file(root, env_file)
+    if not path.is_file():
+        return CheckResult("enterprise runtime env", False, f"missing env file: {path}")
+
+    values = _read_env_file(path)
+    errors: list[str] = []
+    if _is_truthy(_effective_value(values, "DEER_FLOW_AUTH_DISABLED")):
+        errors.append("DEER_FLOW_AUTH_DISABLED must be false or unset")
+    if _is_truthy(_effective_value(values, "GATEWAY_ENABLE_DOCS")):
+        errors.append("GATEWAY_ENABLE_DOCS must be false or unset")
+
+    auth_secret = _effective_value(values, "BETTER_AUTH_SECRET")
+    if (
+        not auth_secret
+        or auth_secret == PLACEHOLDER_AUTH_SECRET
+        or len(auth_secret) < 32
+    ):
+        errors.append(
+            "BETTER_AUTH_SECRET must be a non-placeholder value at least 32 characters long"
+        )
+
+    if not any(_effective_value(values, name) for name in MODEL_CREDENTIAL_ENV_VARS):
+        errors.append("at least one model credential env var must be set")
+
+    trusted_origins = _effective_value(values, "DEER_FLOW_TRUSTED_ORIGINS")
+    cors_origins = _effective_value(values, "GATEWAY_CORS_ORIGINS")
+    for key, value in (
+        ("DEER_FLOW_TRUSTED_ORIGINS", trusted_origins),
+        ("GATEWAY_CORS_ORIGINS", cors_origins),
+    ):
+        if not value:
+            errors.append(f"{key} must be set")
+        elif "*" in _split_csv(value):
+            errors.append(f"{key} must not contain wildcard origins")
+
+    risk_levels = {
+        item.lower()
+        for item in _split_csv(
+            _effective_value(values, "DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS")
+        )
+    }
+    if "high" in risk_levels:
+        errors.append("high-risk extensions must not be enabled by default")
+
+    python_allowlist = _split_csv(
+        _effective_value(values, "DEERFLOW_PYTHON_FUNCTION_ALLOWLIST")
+    )
+    if "*" in python_allowlist:
+        errors.append("DEERFLOW_PYTHON_FUNCTION_ALLOWLIST must not contain wildcards")
+
+    return CheckResult(
+        "enterprise runtime env",
+        not errors,
+        "auth enabled, docs disabled, credentials present, CORS restricted, high-risk defaults disabled"
+        if not errors
+        else "; ".join(errors[:5]),
+    )
+
+
+def _resolve_env_file(root: Path, env_file: Path | None) -> Path:
+    if env_file is None:
+        return root / "docker" / "hackathon-demo.env"
+    if env_file.is_absolute():
+        return env_file
+    return root / env_file
+
+
+def _read_env_file(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        values[key.strip()] = value.strip().strip('"').strip("'")
+    return values
+
+
+def _effective_value(values: dict[str, str], key: str) -> str:
+    return values.get(key) or os.environ.get(key, "")
+
+
+def _split_csv(value: str) -> set[str]:
+    return {item.strip() for item in value.split(",") if item.strip()}
+
+
+def _is_truthy(value: str | None) -> bool:
+    return (value or "").strip().lower() in TRUTHY_VALUES
 
 
 def _git_file_is_tracked(root: Path, path: str) -> bool:
@@ -302,14 +482,30 @@ def _git_file_is_tracked(root: Path, path: str) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run production readiness checks for the hackathon app.")
+    parser = argparse.ArgumentParser(
+        description="Run production readiness checks for the hackathon app."
+    )
     parser.add_argument("--project-root", type=Path, default=REPO_ROOT)
+    parser.add_argument(
+        "--profile",
+        choices=("demo", "enterprise"),
+        default="demo",
+        help="Use 'demo' for smoke-friendly checks or 'enterprise' for production-like runtime env checks.",
+    )
+    parser.add_argument(
+        "--env-file",
+        type=Path,
+        help="Runtime env file to validate when --profile enterprise is used.",
+    )
     args = parser.parse_args(argv)
 
-    results = run_readiness_checks(args.project_root)
+    results = run_readiness_checks(
+        args.project_root, profile=args.profile, env_file=args.env_file
+    )
 
     print("Production readiness report")
     print(f"Project root: {args.project_root.resolve(strict=False)}")
+    print(f"Profile: {args.profile}")
     for result in results:
         status = "PASS" if result.ok else "FAIL"
         print(f"[{status}] {result.name}: {result.detail}")

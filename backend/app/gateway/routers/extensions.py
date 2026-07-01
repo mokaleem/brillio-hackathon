@@ -7,6 +7,7 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, ValidationError
@@ -26,6 +27,7 @@ _ADMIN_REQUIRED_DETAIL = "Admin privileges required to manage extension registry
 _IMPORTED_EXTENSION_MANIFEST = Path("registries") / "imported_extensions.json"
 _DEFAULT_IMPORT_MAX_BYTES = 512 * 1024
 _DEFAULT_IMPORT_MAX_EXTENSIONS = 200
+_DEFAULT_IMPORT_SCHEMA_VERSIONS = (1,)
 _DEFAULT_ALLOWED_ENTRYPOINT_PREFIXES = (
     "internal_tools.",
     "internal_agents.",
@@ -178,6 +180,7 @@ async def preview_extension_import(request: Request, body: ExtensionImportPrevie
     manifest, errors = _parse_import_manifest(body.manifest_json)
     if manifest is None:
         return ExtensionImportPreviewResponse(valid=False, count=0, errors=errors)
+    errors.extend(_import_manifest_policy_errors(manifest))
     safety_errors, safety_warnings = _import_safety_messages(manifest.extensions)
     errors.extend(safety_errors)
     changes = _preview_import_changes(manifest.extensions, repo_root=repo_root)
@@ -204,6 +207,9 @@ async def import_extensions(request: Request, body: ExtensionImportRequest) -> E
     manifest, errors = _parse_import_manifest(body.manifest_json)
     if manifest is None:
         raise HTTPException(status_code=400, detail=errors[0] if errors else "Invalid extension manifest.")
+    policy_errors = _import_manifest_policy_errors(manifest)
+    if policy_errors:
+        raise HTTPException(status_code=400, detail=policy_errors[0])
 
     selected = set(body.selected)
     extensions_to_import = [extension.model_copy(update={"enabled": True}) for extension in manifest.extensions if not selected or _extension_key(extension) in selected]
@@ -409,6 +415,71 @@ def _import_max_manifest_bytes() -> int:
 
 def _import_max_extensions() -> int:
     return _env_positive_int("DEERFLOW_EXTENSION_IMPORT_MAX_EXTENSIONS", _DEFAULT_IMPORT_MAX_EXTENSIONS)
+
+
+def _import_manifest_policy_errors(manifest: ExtensionManifest) -> list[str]:
+    errors: list[str] = []
+    supported_versions = _supported_import_schema_versions()
+    if manifest.version not in supported_versions:
+        errors.append(f"Unsupported extension registry schema version {manifest.version}. Supported versions: {', '.join(str(version) for version in supported_versions)}.")
+
+    allowed_sources = _allowed_import_sources()
+    if allowed_sources:
+        source_identifiers = _manifest_source_identifiers(manifest)
+        if not source_identifiers:
+            errors.append("Imported registry must declare source metadata when DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES is configured.")
+        elif "*" not in allowed_sources and source_identifiers.isdisjoint(allowed_sources):
+            errors.append("Imported registry source is not allowed by DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES.")
+    return errors
+
+
+def _supported_import_schema_versions() -> tuple[int, ...]:
+    configured = os.environ.get("DEERFLOW_EXTENSION_IMPORT_SCHEMA_VERSIONS")
+    if not configured:
+        return _DEFAULT_IMPORT_SCHEMA_VERSIONS
+    versions: list[int] = []
+    for item in configured.split(","):
+        stripped = item.strip()
+        if not stripped:
+            continue
+        try:
+            version = int(stripped)
+        except ValueError:
+            continue
+        if version >= 1:
+            versions.append(version)
+    return tuple(sorted(set(versions))) or _DEFAULT_IMPORT_SCHEMA_VERSIONS
+
+
+def _allowed_import_sources() -> set[str]:
+    configured = os.environ.get("DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES")
+    if configured is None:
+        return set()
+    return {item.strip() for item in configured.split(",") if item.strip()}
+
+
+def _manifest_source_identifiers(manifest: ExtensionManifest) -> set[str]:
+    identifiers: set[str] = set()
+    for key in ("registry", "name", "url", "source_url", "path", "source_path"):
+        value = manifest.metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            identifiers.update(_source_identifier_variants(value))
+    for item in manifest.imports:
+        identifiers.update(_source_identifier_variants(item.name))
+        if item.url:
+            identifiers.update(_source_identifier_variants(item.url))
+        if item.path:
+            identifiers.update(_source_identifier_variants(item.path))
+    return identifiers
+
+
+def _source_identifier_variants(value: str) -> set[str]:
+    stripped = value.strip()
+    variants = {stripped}
+    parsed = urlparse(stripped)
+    if parsed.hostname:
+        variants.add(parsed.hostname)
+    return variants
 
 
 def _env_positive_int(name: str, default: int) -> int:
