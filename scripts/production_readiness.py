@@ -49,6 +49,7 @@ def run_readiness_checks(
     results.append(_check_admin_readiness_endpoint(root))
     results.append(_check_runtime_approval_policy(root))
     results.append(_check_retention_controls(root))
+    results.append(_check_audit_evidence_export(root))
     results.append(_check_generated_registry_gitignored(root))
     results.append(_check_frontend_env_example(root))
     results.append(_check_demo_docs(root))
@@ -360,6 +361,40 @@ def _check_retention_controls(root: Path) -> CheckResult:
         "retention controls",
         not missing_checks,
         "run events and generated artifacts have configurable retention sweeps"
+        if not missing_checks
+        else "missing: " + ", ".join(missing_checks),
+    )
+
+
+def _check_audit_evidence_export(root: Path) -> CheckResult:
+    router = root / "backend" / "app" / "gateway" / "routers" / "audit.py"
+    frontend_api = root / "frontend" / "src" / "core" / "audit" / "api.ts"
+    docs = root / "docs" / "enterprise-readiness.md"
+    tests = [
+        root / "backend" / "tests" / "test_audit_router.py",
+        root / "frontend" / "tests" / "unit" / "core" / "audit" / "api.test.ts",
+    ]
+    missing = [
+        path.relative_to(root).as_posix()
+        for path in (router, frontend_api, docs, *tests)
+        if not path.is_file()
+    ]
+    if missing:
+        return CheckResult("audit evidence export", False, "missing: " + ", ".join(missing))
+
+    checks = {
+        "backend evidence route": "/evidence" in router.read_text(encoding="utf-8"),
+        "download header": "deerflow-audit-evidence.json" in router.read_text(encoding="utf-8"),
+        "frontend export helper": "exportAuditEvidence" in frontend_api.read_text(encoding="utf-8"),
+        "backend test": "test_audit_evidence_exports_compliance_bundle" in tests[0].read_text(encoding="utf-8"),
+        "frontend test": "exportAuditEvidence" in tests[1].read_text(encoding="utf-8"),
+        "docs": "Audit Evidence Export" in docs.read_text(encoding="utf-8"),
+    }
+    missing_checks = [name for name, ok in checks.items() if not ok]
+    return CheckResult(
+        "audit evidence export",
+        not missing_checks,
+        "admin users can download sanitized audit evidence for compliance review"
         if not missing_checks
         else "missing: " + ", ".join(missing_checks),
     )
