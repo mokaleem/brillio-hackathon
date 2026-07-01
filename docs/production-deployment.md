@@ -168,7 +168,7 @@ livenessProbe:
 Use `/health` for unauthenticated liveness. Use authenticated
 `GET /api/readiness` as the operator readiness view before opening traffic or
 announcing a release. It checks auth posture, credentials, tracing, registry
-policy, artifact storage, retention policy, and docs exposure.
+load, registry policy, artifact storage, retention policy, and docs exposure.
 
 ## Storage and Data Retention
 
@@ -200,11 +200,12 @@ Then verify the live deployment:
 
 ```powershell
 curl.exe -fsS https://assistant.example.com/health
+curl.exe -fsS https://assistant.example.com/api/health
 curl.exe -fsS https://gateway.example.com/health
 curl.exe -fsS -H "Authorization: Bearer <admin-token>" https://gateway.example.com/api/readiness
 ```
 
-The first two checks prove processes are alive. The `/api/readiness` response
+The first three checks prove processes are alive. The `/api/readiness` response
 must be `ready` before production traffic is considered healthy.
 
 ## Rollout Procedure
@@ -257,6 +258,6 @@ output, and audit evidence bundle to the incident or release record.
 - [ ] Python function execution uses an explicit allowlist.
 - [ ] `DEER_FLOW_HOME` has durable storage and a documented backup policy.
 - [ ] Retention settings match the company data policy.
-- [ ] `/health` passes for UI and Gateway.
+- [ ] `/health` passes for Gateway and `/api/health` passes for UI.
 - [ ] Authenticated `/api/readiness` returns `ready`.
 - [ ] Rollback image digests and registry/env snapshots are recorded.

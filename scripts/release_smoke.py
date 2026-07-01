@@ -53,6 +53,7 @@ def build_release_smoke_commands(
                 "run",
                 "ruff",
                 "check",
+                "app/gateway/extension_registry.py",
                 "app/gateway/routers/audit.py",
                 "app/gateway/routers/extensions.py",
                 "app/gateway/routers/readiness.py",
@@ -75,6 +76,7 @@ def build_release_smoke_commands(
             (
                 "pnpm",
                 "test",
+                "tests/unit/app/api/health/route.test.ts",
                 "tests/unit/core/audit/api.test.ts",
                 "tests/unit/core/extensions/api.test.ts",
             ),

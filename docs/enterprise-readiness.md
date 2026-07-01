@@ -121,7 +121,7 @@ download action without duplicating endpoint details.
 ## Phase 4: Deployment Hardening
 
 - [x] Add production compose/Kubernetes guidance separate from the hackathon demo bundle.
-- [ ] Add health checks that cover gateway, UI, registry load, and artifact storage.
+- [x] Add health checks that cover gateway, UI, registry load, and artifact storage.
 - [ ] Add dependency audit commands to the release gate.
 - [ ] Add rollback instructions and release owner checklist.
 
@@ -138,6 +138,25 @@ It is intentionally separate from the hackathon demo bundle and covers strict
 runtime defaults, Docker Compose guidance, Kubernetes service boundaries,
 storage/retention expectations, release validation, rollback steps, and the
 release owner checklist.
+
+### Enterprise Health Checks
+
+Production health uses separate liveness and readiness signals:
+
+- Gateway liveness: unauthenticated `GET /health` returns the Gateway process
+  status.
+- UI liveness: unauthenticated `GET /api/health` returns the frontend process
+  status.
+- Registry load readiness: authenticated `GET /api/readiness` includes the
+  `registry_load` component, which validates configured manifests and imported
+  descriptors.
+- Artifact storage readiness: authenticated `GET /api/readiness` includes the
+  `artifact_storage` component, which verifies the runtime artifact base
+  directory is writable.
+
+`/health` and `/api/health` prove processes are alive. `/api/readiness` is the
+operator gate that distinguishes partial startup from a deployment that can
+serve registry-backed chat and generated artifacts.
 
 ## Current Risk Register
 

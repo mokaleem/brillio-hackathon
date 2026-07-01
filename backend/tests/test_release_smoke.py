@@ -32,6 +32,8 @@ def test_release_smoke_includes_backend_frontend_and_e2e_steps() -> None:
     ]
     assert commands[0].cwd == REPO_ROOT
     assert commands[0].command == ("python", "scripts/production_readiness.py")
+    assert "app/gateway/extension_registry.py" in commands[2].command
+    assert "tests/unit/app/api/health/route.test.ts" in commands[4].command
     assert commands[-1].cwd == REPO_ROOT / "frontend"
     assert commands[-1].command == (
         "pnpm",

@@ -55,6 +55,7 @@ def run_readiness_checks(
     results.append(_check_demo_docs(root))
     results.append(_check_demo_deploy_bundle(root))
     results.append(_check_production_deployment_docs(root))
+    results.append(_check_enterprise_health_checks(root))
     if profile == "enterprise":
         results.append(_check_enterprise_runtime_env(root, env_file))
     return results
@@ -572,6 +573,45 @@ def _check_production_deployment_docs(root: Path) -> CheckResult:
         "production Compose/Kubernetes guidance, validation, and rollback steps are documented"
         if not missing
         else "missing: " + ", ".join(missing[:5]),
+    )
+
+
+def _check_enterprise_health_checks(root: Path) -> CheckResult:
+    gateway_app = root / "backend" / "app" / "gateway" / "app.py"
+    readiness = root / "backend" / "app" / "gateway" / "routers" / "readiness.py"
+    frontend_health = root / "frontend" / "src" / "app" / "api" / "health" / "route.ts"
+    docs = root / "docs" / "enterprise-readiness.md"
+    tests = [
+        root / "backend" / "tests" / "test_readiness_router.py",
+        root / "frontend" / "tests" / "unit" / "app" / "api" / "health" / "route.test.ts",
+    ]
+    required = [gateway_app, readiness, frontend_health, docs, *tests]
+    missing = [
+        path.relative_to(root).as_posix() for path in required if not path.is_file()
+    ]
+    if missing:
+        return CheckResult(
+            "enterprise health checks",
+            False,
+            "missing: " + ", ".join(missing),
+        )
+
+    checks = {
+        "gateway /health": '@app.get("/health"' in gateway_app.read_text(encoding="utf-8"),
+        "frontend /api/health": "deer-flow-frontend" in frontend_health.read_text(encoding="utf-8"),
+        "registry load readiness": "registry_load" in readiness.read_text(encoding="utf-8"),
+        "artifact storage readiness": "artifact_storage" in readiness.read_text(encoding="utf-8"),
+        "health docs": "Enterprise Health Checks" in docs.read_text(encoding="utf-8"),
+        "backend registry test": "test_readiness_errors_when_registry_manifests_do_not_load" in tests[0].read_text(encoding="utf-8"),
+        "frontend health test": "returns frontend health metadata" in tests[1].read_text(encoding="utf-8"),
+    }
+    missing_checks = [name for name, ok in checks.items() if not ok]
+    return CheckResult(
+        "enterprise health checks",
+        not missing_checks,
+        "gateway, UI, registry-load, and artifact-storage health signals are covered"
+        if not missing_checks
+        else "missing: " + ", ".join(missing_checks),
     )
 
 
