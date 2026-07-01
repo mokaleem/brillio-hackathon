@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "release": {
+    "owner": "",
+    "environment": "",
+    "commit": "",
+    "started_at": "",
+    "completed_at": ""
+  },
+  "artifacts": {
+    "frontend_image_digest": "",
+    "gateway_image_digest": "",
+    "registry_manifest_sha256": "",
+    "runtime_env_or_secret_version": ""
+  },
+  "validation": {
+    "ci_run_url": "",
+    "dependency_audit_passed": false,
+    "production_readiness_passed": false,
+    "release_smoke_passed": false,
+    "ui_health_passed": false,
+    "gateway_health_passed": false,
+    "admin_readiness_status": ""
+  },
+  "evidence": {
+    "audit_evidence_export_path": "",
+    "dependency_audit_output_path": "",
+    "readiness_output_path": "",
+    "release_notes_url": ""
+  },
+  "rollback": {
+    "previous_frontend_image_digest": "",
+    "previous_gateway_image_digest": "",
+    "previous_registry_manifest_sha256": "",
+    "previous_runtime_env_or_secret_version": "",
+    "rollback_owner": "",
+    "rollback_validated": false
+  },
+  "approvals": {
+    "release_owner": "",
+    "engineering_owner": "",
+    "security_or_platform_owner": ""
+  }
+}

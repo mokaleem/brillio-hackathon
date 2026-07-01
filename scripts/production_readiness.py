@@ -57,6 +57,7 @@ def run_readiness_checks(
     results.append(_check_production_deployment_docs(root))
     results.append(_check_enterprise_health_checks(root))
     results.append(_check_dependency_audit_gate(root))
+    results.append(_check_release_operations_runbook(root))
     if profile == "enterprise":
         results.append(_check_enterprise_runtime_env(root, env_file))
     return results
@@ -663,6 +664,47 @@ def _check_dependency_audit_gate(root: Path) -> CheckResult:
         "dependency audit gate",
         not missing_checks,
         "release smoke fails on new high/critical dependency advisories and expired exceptions"
+        if not missing_checks
+        else "missing: " + ", ".join(missing_checks),
+    )
+
+
+def _check_release_operations_runbook(root: Path) -> CheckResult:
+    runbook = root / "docs" / "release-operations.md"
+    template = root / "docs" / "templates" / "release-owner-checklist.json"
+    enterprise_docs = root / "docs" / "enterprise-readiness.md"
+    production_docs = root / "docs" / "production-deployment.md"
+    required = [runbook, template, enterprise_docs, production_docs]
+    missing = [
+        path.relative_to(root).as_posix() for path in required if not path.is_file()
+    ]
+    if missing:
+        return CheckResult(
+            "release operations runbook",
+            False,
+            "missing: " + ", ".join(missing),
+        )
+
+    runbook_text = runbook.read_text(encoding="utf-8")
+    template_text = template.read_text(encoding="utf-8")
+    enterprise_text = enterprise_docs.read_text(encoding="utf-8")
+    production_text = production_docs.read_text(encoding="utf-8")
+    required_phrases = {
+        "release owner role": "Release Owner Role" in runbook_text,
+        "pre-release checklist": "Pre-Release Checklist" in runbook_text,
+        "rollback decision tree": "Rollback Decision Tree" in runbook_text,
+        "post-release evidence": "Post-Release Evidence" in runbook_text,
+        "communication template": "Communication Template" in runbook_text,
+        "checklist commit": "\"commit\"" in template_text,
+        "checklist rollback targets": "previous_gateway_image_digest" in template_text,
+        "enterprise readiness link": "Release Operations" in enterprise_text,
+        "production deployment link": "release-owner-checklist.json" in production_text,
+    }
+    missing_checks = [name for name, ok in required_phrases.items() if not ok]
+    return CheckResult(
+        "release operations runbook",
+        not missing_checks,
+        "rollback decision tree and release owner checklist are documented"
         if not missing_checks
         else "missing: " + ", ".join(missing_checks),
     )

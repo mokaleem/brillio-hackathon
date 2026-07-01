@@ -218,6 +218,10 @@ must be `ready` before production traffic is considered healthy.
 
 ## Rollout Procedure
 
+Use `docs/release-operations.md` and
+`docs/templates/release-owner-checklist.json` as the release record for the
+promotion window.
+
 1. Build immutable UI and Gateway images from the same commit.
 2. Run unit, frontend, release smoke, and production readiness gates.
 3. Publish images with a version tag and immutable digest.
