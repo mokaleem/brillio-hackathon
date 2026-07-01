@@ -12,6 +12,8 @@ from deerflow.config.app_config import reset_app_config
 from deerflow.config.run_events_config import RunEventsConfig
 from deerflow.config.tracing_config import reset_tracing_config
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 
 @pytest.fixture(autouse=True)
 def _reset_cached_readiness_config():
@@ -54,6 +56,13 @@ def _stub_run_events_config(monkeypatch, config: RunEventsConfig | None = None) 
     monkeypatch.setattr(readiness, "get_app_config", lambda: _StubAppConfig())
 
 
+def _use_demo_registry(monkeypatch) -> None:
+    monkeypatch.setenv(
+        "DEERFLOW_EXTENSION_MANIFESTS",
+        str(REPO_ROOT / "registries" / "demo_extensions.json"),
+    )
+
+
 def test_readiness_requires_admin_user() -> None:
     with TestClient(_make_app()) as client:
         response = client.get("/api/readiness")
@@ -72,6 +81,7 @@ def test_readiness_reports_operator_status(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("LANGFUSE_TRACING", raising=False)
     monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
     monkeypatch.delenv("DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS", raising=False)
+    _use_demo_registry(monkeypatch)
     monkeypatch.delenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", raising=False)
 
     with TestClient(_make_admin_app()) as client:
@@ -85,6 +95,7 @@ def test_readiness_reports_operator_status(monkeypatch, tmp_path: Path) -> None:
         "auth",
         "model_credentials",
         "tracing",
+        "registry_load",
         "registry_policy",
         "artifact_storage",
         "retention_policy",
@@ -93,6 +104,8 @@ def test_readiness_reports_operator_status(monkeypatch, tmp_path: Path) -> None:
     assert components["auth"]["status"] == "ok"
     assert components["model_credentials"]["status"] == "ok"
     assert components["tracing"]["status"] == "warning"
+    assert components["registry_load"]["status"] == "ok"
+    assert components["registry_load"]["metadata"]["count"] == 7
     assert components["registry_policy"]["metadata"]["allowed_risk_levels"] == ["low", "medium"]
     assert components["artifact_storage"]["status"] == "ok"
     assert components["retention_policy"]["status"] == "ok"
@@ -111,6 +124,7 @@ def test_readiness_reports_enterprise_misconfiguration(monkeypatch, tmp_path: Pa
     monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
     monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
     monkeypatch.setenv("DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS", "critical")
+    _use_demo_registry(monkeypatch)
     monkeypatch.delenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", raising=False)
     for name in readiness._MODEL_CREDENTIAL_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
@@ -125,6 +139,7 @@ def test_readiness_reports_enterprise_misconfiguration(monkeypatch, tmp_path: Pa
     assert components["auth"]["status"] == "error"
     assert components["model_credentials"]["status"] == "error"
     assert components["tracing"]["status"] == "error"
+    assert components["registry_load"]["status"] == "ok"
     assert components["registry_policy"]["status"] == "error"
     assert components["api_docs"]["status"] == "warning"
 
@@ -137,6 +152,7 @@ def test_readiness_errors_when_high_risk_approval_gate_is_disabled(monkeypatch, 
     monkeypatch.setenv("GATEWAY_ENABLE_DOCS", "false")
     monkeypatch.setenv("DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS", "low,medium,high")
     monkeypatch.setenv("DEERFLOW_EXTENSION_REQUIRE_HIGH_RISK_APPROVAL", "false")
+    _use_demo_registry(monkeypatch)
     monkeypatch.delenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", raising=False)
 
     with TestClient(_make_admin_app()) as client:
@@ -148,3 +164,23 @@ def test_readiness_errors_when_high_risk_approval_gate_is_disabled(monkeypatch, 
     assert payload["status"] == "not_ready"
     assert components["registry_policy"]["status"] == "error"
     assert components["registry_policy"]["metadata"]["require_high_risk_approval"] is False
+
+
+def test_readiness_errors_when_registry_manifests_do_not_load(monkeypatch, tmp_path: Path) -> None:
+    _reset_cached_env_config(monkeypatch)
+    _stub_run_events_config(monkeypatch)
+    monkeypatch.setenv("DEER_FLOW_HOME", str(tmp_path / "deer-home"))
+    monkeypatch.setenv("OPENAI_API_KEY", "test-model-credential")
+    monkeypatch.setenv("GATEWAY_ENABLE_DOCS", "false")
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(tmp_path / "missing.json"))
+    monkeypatch.setattr(readiness.extension_registry, "repo_root", lambda: tmp_path)
+
+    with TestClient(_make_admin_app()) as client:
+        response = client.get("/api/readiness")
+
+    assert response.status_code == 200
+    payload = response.json()
+    components = {component["name"]: component for component in payload["components"]}
+    assert payload["status"] == "not_ready"
+    assert components["registry_load"]["status"] == "error"
+    assert "missing.json" in components["registry_load"]["metadata"]["errors"][0]

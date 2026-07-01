@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, ValidationError
 
+from app.gateway import extension_registry
 from app.gateway.deps import require_admin_user
 from deerflow.audit import record_audit_event
 from deerflow.extensions import (
@@ -26,7 +27,7 @@ from deerflow.extensions import (
 )
 
 _ADMIN_REQUIRED_DETAIL = "Admin privileges required to manage extension registry configuration."
-_IMPORTED_EXTENSION_MANIFEST = Path("registries") / "imported_extensions.json"
+_IMPORTED_EXTENSION_MANIFEST = extension_registry.IMPORTED_EXTENSION_MANIFEST
 _DEFAULT_IMPORT_MAX_BYTES = 512 * 1024
 _DEFAULT_IMPORT_MAX_EXTENSIONS = 200
 _DEFAULT_IMPORT_SCHEMA_VERSIONS = (1,)
@@ -285,24 +286,15 @@ async def remove_imported_extension(request: Request, kind: ExtensionKind, name:
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[4]
+    return extension_registry.repo_root()
 
 
 def _manifest_paths(repo_root: Path) -> list[Path]:
-    configured = os.environ.get("DEERFLOW_EXTENSION_MANIFESTS")
-    if configured:
-        return _with_imported_manifest(
-            [_resolve_manifest_path(path, repo_root) for path in configured.split(os.pathsep) if path],
-            repo_root,
-        )
-    return _with_imported_manifest([repo_root / "registries" / "internal_extensions.example.json"], repo_root)
+    return extension_registry.manifest_paths(repo_root)
 
 
 def _resolve_manifest_path(path: str, repo_root: Path) -> Path:
-    resolved = Path(path)
-    if not resolved.is_absolute():
-        resolved = repo_root / resolved
-    return resolved
+    return extension_registry.resolve_manifest_path(path, repo_root)
 
 
 def _catalog_response(extensions: list[Any]) -> ExtensionsListResponse:
@@ -721,10 +713,4 @@ def _descriptor_hash(extension: ExtensionDescriptor) -> str:
 
 
 def _with_imported_manifest(paths: list[Path], repo_root: Path) -> list[Path]:
-    imported = repo_root / _IMPORTED_EXTENSION_MANIFEST
-    if not imported.is_file():
-        return paths
-    imported_resolved = imported.resolve(strict=False)
-    if imported_resolved in {path.resolve(strict=False) for path in paths}:
-        return paths
-    return [*paths, imported]
+    return extension_registry.with_imported_manifest(paths, repo_root)

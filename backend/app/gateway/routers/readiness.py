@@ -9,6 +9,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
+from app.gateway import extension_registry
 from app.gateway.auth_disabled import (
     is_auth_disabled,
     is_auth_disabled_requested,
@@ -19,6 +20,7 @@ from app.gateway.deps import require_admin_user
 from deerflow.config.app_config import get_app_config
 from deerflow.config.paths import Paths
 from deerflow.config.tracing_config import get_tracing_config
+from deerflow.extensions import validate_extension_registry
 from deerflow.extensions.policy import (
     REQUIRE_HIGH_RISK_APPROVAL_ENV_VAR,
     RUNTIME_RISK_ENV_VAR,
@@ -70,6 +72,7 @@ def build_readiness_components() -> list[ReadinessComponent]:
         _auth_status(),
         _model_credentials_status(),
         _tracing_status(),
+        _registry_load_status(),
         _registry_policy_status(),
         _artifact_storage_status(),
         _retention_policy_status(),
@@ -150,6 +153,40 @@ def _tracing_status() -> ReadinessComponent:
         status="warning",
         detail="No tracing provider is enabled.",
         metadata={"explicitly_enabled": config.explicitly_enabled_providers},
+    )
+
+
+def _registry_load_status() -> ReadinessComponent:
+    root = extension_registry.repo_root()
+    health = validate_extension_registry(
+        extension_registry.manifest_paths(root),
+        repo_root=root,
+    )
+    metadata = {
+        "count": health.count,
+        "manifests": list(health.manifests),
+        "errors": list(health.errors[:5]),
+        "warnings": list(health.warnings[:5]),
+    }
+    if not health.valid:
+        return ReadinessComponent(
+            name="registry_load",
+            status="error",
+            detail="Extension registry manifests failed validation.",
+            metadata=metadata,
+        )
+    if health.warnings:
+        return ReadinessComponent(
+            name="registry_load",
+            status="warning",
+            detail="Extension registry manifests loaded with warnings.",
+            metadata=metadata,
+        )
+    return ReadinessComponent(
+        name="registry_load",
+        status="ok",
+        detail="Extension registry manifests load successfully.",
+        metadata=metadata,
     )
 
 
