@@ -209,12 +209,16 @@ Registry import is admin-only and fails closed.
 | --- | --- | --- |
 | `DEERFLOW_EXTENSION_IMPORT_MAX_BYTES` | `524288` | Maximum manifest JSON payload size. |
 | `DEERFLOW_EXTENSION_IMPORT_MAX_EXTENSIONS` | `200` | Maximum descriptors per imported manifest. |
+| `DEERFLOW_EXTENSION_IMPORT_SCHEMA_VERSIONS` | `1` | Comma-separated manifest schema versions accepted for import. |
+| `DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES` | unset | Optional comma-separated registry names, exact URLs/paths, or URL hostnames accepted for import. Use for enterprise source allowlists. |
 | `DEERFLOW_EXTENSION_IMPORT_ENTRYPOINT_PREFIXES` | `internal_tools.,internal_agents.,internal_mcps.,internal_skills/,company_tools.,company_agents.,company_skills/,deerflow.` | Comma-separated allowed entrypoint prefixes. Use `*` only in trusted local development. |
 
 Blocked by default:
 
 - Invalid JSON or schema violations.
 - Oversized manifests or too many descriptors.
+- Unsupported manifest schema versions.
+- Registry sources not listed in `DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES` when that allowlist is configured.
 - Duplicate `kind:name` keys already configured.
 - Python tool/agent entrypoints that are not `module:function`.
 - Path traversal, absolute paths, backslashes, control characters, or entrypoints outside the allowed prefix list.

@@ -33,9 +33,9 @@ For enterprise deployments, keep `docker/hackathon-demo.env` or an equivalent ru
 
 ## Phase 2: Registry Security
 
-- [ ] Require explicit source provenance for imported registry descriptors.
-- [ ] Add registry schema version negotiation and clear compatibility errors.
-- [ ] Add optional registry source allowlists for enterprise deployments.
+- [x] Require explicit source provenance when source allowlists are configured.
+- [x] Add registry schema version negotiation and clear compatibility errors.
+- [x] Add optional registry source allowlists for enterprise deployments.
 - [ ] Add audit rows for rejected imports, not only committed imports.
 
 Acceptance criteria:

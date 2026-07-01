@@ -198,6 +198,11 @@ def _check_import_guardrails(root: Path) -> CheckResult:
         "_import_safety_messages" in text
         and "DEERFLOW_EXTENSION_IMPORT_ENTRYPOINT_PREFIXES" in text
     )
+    has_schema_policy = (
+        "DEERFLOW_EXTENSION_IMPORT_SCHEMA_VERSIONS" in text
+        and "_import_manifest_policy_errors" in text
+    )
+    has_source_allowlist = "DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES" in text
     if not has_byte_limit:
         return CheckResult(
             "import guardrails", False, "default 512 KiB manifest limit is missing"
@@ -216,10 +221,20 @@ def _check_import_guardrails(root: Path) -> CheckResult:
         return CheckResult(
             "import guardrails", False, "import safety validation helper is missing"
         )
+    if not has_schema_policy:
+        return CheckResult(
+            "import guardrails", False, "schema version policy validation is missing"
+        )
+    if not has_source_allowlist:
+        return CheckResult(
+            "import guardrails",
+            False,
+            "registry source allowlist validation is missing",
+        )
     return CheckResult(
         "import guardrails",
         True,
-        "512 KiB byte limit, 200 descriptor limit, entrypoint prefix validation enabled",
+        "byte/count limits, schema versions, source allowlist, and entrypoint prefix validation enabled",
     )
 
 

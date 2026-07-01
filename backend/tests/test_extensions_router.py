@@ -387,6 +387,104 @@ def test_extensions_import_preview_rejects_too_many_descriptors(monkeypatch, tmp
     assert "Limit is 1 extensions" in payload["errors"][0]
 
 
+def test_extensions_import_preview_rejects_unsupported_schema_version(monkeypatch, tmp_path: Path) -> None:
+    base_manifest = tmp_path / "registries" / "internal_extensions.example.json"
+    base_manifest.parent.mkdir()
+    base_manifest.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
+    monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(base_manifest))
+
+    manifest_json = """
+    {
+      "version": 99,
+      "extensions": [
+        {
+          "kind": "tool",
+          "name": "forecast-export",
+          "source": "registry",
+          "entrypoint": "company_tools.forecast:export"
+        }
+      ]
+    }
+    """
+
+    with TestClient(_make_admin_app()) as client:
+        response = client.post("/api/extensions/import/preview", json={"manifest_json": manifest_json})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["valid"] is False
+    assert "Unsupported extension registry schema version 99" in payload["errors"][0]
+
+
+def test_extensions_import_preview_enforces_source_allowlist(monkeypatch, tmp_path: Path) -> None:
+    base_manifest = tmp_path / "registries" / "internal_extensions.example.json"
+    base_manifest.parent.mkdir()
+    base_manifest.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
+    monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(base_manifest))
+    monkeypatch.setenv("DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES", "approved-registry")
+
+    manifest_json = """
+    {
+      "version": 1,
+      "metadata": {
+        "registry": "unknown-registry",
+        "url": "https://registry.example.com/forecast.json"
+      },
+      "extensions": [
+        {
+          "kind": "tool",
+          "name": "forecast-export",
+          "source": "registry",
+          "entrypoint": "company_tools.forecast:export"
+        }
+      ]
+    }
+    """
+
+    with TestClient(_make_admin_app()) as client:
+        response = client.post("/api/extensions/import/preview", json={"manifest_json": manifest_json})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["valid"] is False
+    assert "DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES" in payload["errors"][0]
+
+
+def test_extensions_import_preview_allows_source_hostname(monkeypatch, tmp_path: Path) -> None:
+    base_manifest = tmp_path / "registries" / "internal_extensions.example.json"
+    base_manifest.parent.mkdir()
+    base_manifest.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
+    monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(base_manifest))
+    monkeypatch.setenv("DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES", "registry.example.com")
+
+    manifest_json = """
+    {
+      "version": 1,
+      "metadata": {
+        "url": "https://registry.example.com/forecast.json"
+      },
+      "extensions": [
+        {
+          "kind": "tool",
+          "name": "forecast-export",
+          "source": "registry",
+          "entrypoint": "company_tools.forecast:export",
+          "risk_level": "medium"
+        }
+      ]
+    }
+    """
+
+    with TestClient(_make_admin_app()) as client:
+        response = client.post("/api/extensions/import/preview", json={"manifest_json": manifest_json})
+
+    assert response.status_code == 200
+    assert response.json()["valid"] is True
+
+
 def test_extensions_import_preview_blocks_dangerous_entrypoints(monkeypatch, tmp_path: Path) -> None:
     base_manifest = tmp_path / "registries" / "internal_extensions.example.json"
     base_manifest.parent.mkdir()
@@ -525,6 +623,41 @@ def test_extensions_import_selected_descriptors(monkeypatch, tmp_path: Path) -> 
     persisted = imported_manifest.read_text(encoding="utf-8")
     assert '"provenance"' in persisted
     assert provenance["descriptor_hash"] in persisted
+
+
+def test_extensions_import_enforces_source_allowlist(monkeypatch, tmp_path: Path) -> None:
+    base_manifest = tmp_path / "registries" / "internal_extensions.example.json"
+    base_manifest.parent.mkdir()
+    base_manifest.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
+    monkeypatch.setattr(extensions, "_repo_root", lambda: tmp_path)
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(base_manifest))
+    monkeypatch.setenv("DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES", "approved-registry")
+
+    manifest_json = """
+    {
+      "version": 1,
+      "metadata": {
+        "registry": "unknown-registry"
+      },
+      "extensions": [
+        {
+          "kind": "tool",
+          "name": "forecast-export",
+          "source": "registry",
+          "entrypoint": "company_tools.forecast:export"
+        }
+      ]
+    }
+    """
+
+    with TestClient(_make_admin_app()) as client:
+        response = client.post(
+            "/api/extensions/import",
+            json={"manifest_json": manifest_json, "selected": ["tool:forecast-export"]},
+        )
+
+    assert response.status_code == 400
+    assert "DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES" in response.json()["detail"]
 
 
 def test_extensions_remove_imported_descriptor(monkeypatch, tmp_path: Path) -> None:
