@@ -4,6 +4,9 @@ Uses a helper to create the store for each backend type.
 Memory tests run directly; DB and JSONL tests create stores inside each test.
 """
 
+import os
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from deerflow.runtime.events.store.memory import MemoryRunEventStore
@@ -264,6 +267,21 @@ class TestDelete:
     async def test_delete_nonexistent_thread_for_run_returns_zero(self, store):
         assert await store.delete_by_run("nope", "r1") == 0
 
+    @pytest.mark.anyio
+    async def test_delete_older_than_removes_only_expired_events(self, store):
+        now = datetime.now(UTC)
+        old = (now - timedelta(days=45)).isoformat()
+        fresh = (now - timedelta(days=5)).isoformat()
+        await store.put(thread_id="t1", run_id="r1", event_type="human_message", category="message", created_at=old)
+        await store.put(thread_id="t1", run_id="r1", event_type="ai_message", category="message", created_at=fresh)
+
+        removed = await store.delete_older_than(now - timedelta(days=30))
+
+        assert removed == 1
+        messages = await store.list_messages("t1")
+        assert len(messages) == 1
+        assert messages[0]["event_type"] == "ai_message"
+
 
 # -- Edge cases --
 
@@ -429,6 +447,27 @@ class TestDbRunEventStore:
         c = await s.delete_by_thread("t1")
         assert c == 1
         assert await s.count_messages("t1") == 0
+
+        await close_engine()
+
+    @pytest.mark.anyio
+    async def test_delete_older_than(self, tmp_path):
+        from deerflow.persistence.engine import close_engine, get_session_factory, init_engine
+        from deerflow.runtime.events.store.db import DbRunEventStore
+
+        now = datetime.now(UTC)
+        url = f"sqlite+aiosqlite:///{tmp_path / 'test.db'}"
+        await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
+        s = DbRunEventStore(get_session_factory())
+
+        await s.put(thread_id="t1", run_id="r1", event_type="old", category="trace", created_at=(now - timedelta(days=45)).isoformat())
+        await s.put(thread_id="t1", run_id="r1", event_type="fresh", category="trace", created_at=(now - timedelta(days=5)).isoformat())
+
+        removed = await s.delete_older_than(now - timedelta(days=30))
+
+        assert removed == 1
+        events = await s.list_events("t1", "r1")
+        assert [event["event_type"] for event in events] == ["fresh"]
 
         await close_engine()
 
@@ -622,3 +661,45 @@ class TestJsonlRunEventStore:
         assert c == 1
         assert not (tmp_path / "jsonl" / "threads" / "t1" / "runs" / "r2.jsonl").exists()
         assert await s.count_messages("t1") == 1
+
+    @pytest.mark.anyio
+    async def test_delete_older_than_rewrites_jsonl_files(self, tmp_path):
+        from deerflow.runtime.events.store.jsonl import JsonlRunEventStore
+
+        now = datetime.now(UTC)
+        s = JsonlRunEventStore(base_dir=tmp_path / "jsonl")
+        await s.put(thread_id="t1", run_id="r1", event_type="old", category="trace", created_at=(now - timedelta(days=45)).isoformat())
+        await s.put(thread_id="t1", run_id="r1", event_type="fresh", category="trace", created_at=(now - timedelta(days=5)).isoformat())
+
+        removed = await s.delete_older_than(now - timedelta(days=30))
+
+        assert removed == 1
+        events = await s.list_events("t1", "r1")
+        assert [event["event_type"] for event in events] == ["fresh"]
+
+
+class TestArtifactRetention:
+    @pytest.mark.anyio
+    async def test_sweep_generated_artifacts_removes_only_expired_outputs(self, tmp_path):
+        from deerflow.config.paths import Paths
+        from deerflow.retention import sweep_generated_artifacts
+
+        paths = Paths(tmp_path / "deer-home")
+        old_output = paths.sandbox_outputs_dir("thread-1") / "old.txt"
+        fresh_output = paths.sandbox_outputs_dir("thread-1") / "fresh.txt"
+        upload = paths.sandbox_uploads_dir("thread-1") / "old-upload.txt"
+        for path in (old_output, fresh_output, upload):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(path.name, encoding="utf-8")
+
+        now = datetime.now(UTC).timestamp()
+        os.utime(old_output, (now - 45 * 24 * 60 * 60, now - 45 * 24 * 60 * 60))
+        os.utime(upload, (now - 45 * 24 * 60 * 60, now - 45 * 24 * 60 * 60))
+
+        deleted, bytes_deleted = await sweep_generated_artifacts(retention_days=30, paths=paths)
+
+        assert deleted == 1
+        assert bytes_deleted == len("old.txt")
+        assert not old_output.exists()
+        assert fresh_output.exists()
+        assert upload.exists()

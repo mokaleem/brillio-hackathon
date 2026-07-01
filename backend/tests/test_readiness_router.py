@@ -8,17 +8,21 @@ from fastapi.testclient import TestClient
 from app.gateway import config as gateway_config
 from app.gateway.auth.models import User
 from app.gateway.routers import readiness
+from deerflow.config.app_config import reset_app_config
+from deerflow.config.run_events_config import RunEventsConfig
 from deerflow.config.tracing_config import reset_tracing_config
 
 
 @pytest.fixture(autouse=True)
 def _reset_cached_readiness_config():
     reset_tracing_config()
+    reset_app_config()
     gateway_config._gateway_config = None
     try:
         yield
     finally:
         reset_tracing_config()
+        reset_app_config()
         gateway_config._gateway_config = None
 
 
@@ -40,6 +44,14 @@ def _make_admin_app() -> FastAPI:
 def _reset_cached_env_config(monkeypatch) -> None:
     monkeypatch.setattr(gateway_config, "_gateway_config", None)
     reset_tracing_config()
+    reset_app_config()
+
+
+def _stub_run_events_config(monkeypatch, config: RunEventsConfig | None = None) -> None:
+    class _StubAppConfig:
+        run_events = config or RunEventsConfig()
+
+    monkeypatch.setattr(readiness, "get_app_config", lambda: _StubAppConfig())
 
 
 def test_readiness_requires_admin_user() -> None:
@@ -52,6 +64,7 @@ def test_readiness_requires_admin_user() -> None:
 
 def test_readiness_reports_operator_status(monkeypatch, tmp_path: Path) -> None:
     _reset_cached_env_config(monkeypatch)
+    _stub_run_events_config(monkeypatch)
     monkeypatch.setenv("DEER_FLOW_HOME", str(tmp_path / "deer-home"))
     monkeypatch.setenv("OPENAI_API_KEY", "test-model-credential")
     monkeypatch.setenv("GATEWAY_ENABLE_DOCS", "false")
@@ -59,6 +72,7 @@ def test_readiness_reports_operator_status(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("LANGFUSE_TRACING", raising=False)
     monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
     monkeypatch.delenv("DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS", raising=False)
+    monkeypatch.delenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", raising=False)
 
     with TestClient(_make_admin_app()) as client:
         response = client.get("/api/readiness")
@@ -73,6 +87,7 @@ def test_readiness_reports_operator_status(monkeypatch, tmp_path: Path) -> None:
         "tracing",
         "registry_policy",
         "artifact_storage",
+        "retention_policy",
         "api_docs",
     }
     assert components["auth"]["status"] == "ok"
@@ -80,11 +95,15 @@ def test_readiness_reports_operator_status(monkeypatch, tmp_path: Path) -> None:
     assert components["tracing"]["status"] == "warning"
     assert components["registry_policy"]["metadata"]["allowed_risk_levels"] == ["low", "medium"]
     assert components["artifact_storage"]["status"] == "ok"
+    assert components["retention_policy"]["status"] == "ok"
+    assert components["retention_policy"]["metadata"]["run_event_retention_days"] == 30
+    assert components["retention_policy"]["metadata"]["artifact_retention_days"] == 30
     assert components["api_docs"]["status"] == "ok"
 
 
 def test_readiness_reports_enterprise_misconfiguration(monkeypatch, tmp_path: Path) -> None:
     _reset_cached_env_config(monkeypatch)
+    _stub_run_events_config(monkeypatch)
     monkeypatch.setenv("DEER_FLOW_HOME", str(tmp_path / "deer-home"))
     monkeypatch.setenv("DEER_FLOW_AUTH_DISABLED", "1")
     monkeypatch.setenv("GATEWAY_ENABLE_DOCS", "true")
@@ -92,6 +111,7 @@ def test_readiness_reports_enterprise_misconfiguration(monkeypatch, tmp_path: Pa
     monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
     monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
     monkeypatch.setenv("DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS", "critical")
+    monkeypatch.delenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", raising=False)
     for name in readiness._MODEL_CREDENTIAL_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
 
@@ -111,11 +131,13 @@ def test_readiness_reports_enterprise_misconfiguration(monkeypatch, tmp_path: Pa
 
 def test_readiness_errors_when_high_risk_approval_gate_is_disabled(monkeypatch, tmp_path: Path) -> None:
     _reset_cached_env_config(monkeypatch)
+    _stub_run_events_config(monkeypatch)
     monkeypatch.setenv("DEER_FLOW_HOME", str(tmp_path / "deer-home"))
     monkeypatch.setenv("OPENAI_API_KEY", "test-model-credential")
     monkeypatch.setenv("GATEWAY_ENABLE_DOCS", "false")
     monkeypatch.setenv("DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS", "low,medium,high")
     monkeypatch.setenv("DEERFLOW_EXTENSION_REQUIRE_HIGH_RISK_APPROVAL", "false")
+    monkeypatch.delenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", raising=False)
 
     with TestClient(_make_admin_app()) as client:
         response = client.get("/api/readiness")

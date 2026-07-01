@@ -49,7 +49,7 @@ Acceptance criteria:
 
 - [x] Add admin-visible readiness status for auth, model credentials, tracing, registry risk policy, and artifact storage.
 - [x] Add capability-level approval policy defaults for high-risk tools.
-- [ ] Add retention controls for run events and generated artifacts.
+- [x] Add retention controls for run events and generated artifacts.
 - [ ] Add exportable audit evidence for compliance review.
 
 Acceptance criteria:
@@ -62,7 +62,8 @@ Acceptance criteria:
 
 The gateway exposes `GET /api/readiness` for admin users. It returns an
 overall status plus component rows for authentication, model credentials,
-tracing, runtime registry policy, artifact storage, and API docs exposure.
+tracing, runtime registry policy, artifact storage, retention policy, and
+API docs exposure.
 
 Statuses:
 
@@ -79,6 +80,27 @@ runtime materialization: `DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS` must include
 `high`, and the descriptor must include `approval.status: "approved"` unless
 `DEERFLOW_EXTENSION_REQUIRE_HIGH_RISK_APPROVAL=false` is set for trusted local
 development.
+
+### Retention Controls
+
+Run event and generated artifact retention lives in the startup-only
+`run_events` config section:
+
+```yaml
+run_events:
+  retention_days: 30
+  artifact_retention_days: 30
+```
+
+`retention_days` deletes persisted run events older than the configured number
+of days when a retention sweep runs. `artifact_retention_days` deletes generated
+artifact files under DeerFlow artifact/output directories. Set either value to
+`null` only when an external retention system owns that data; `/api/readiness`
+reports a warning when a sweep is disabled.
+
+The harness exposes SDK-level sweep helpers in `deerflow.retention` so gateway
+jobs, deployment cron jobs, or enterprise schedulers can apply the same policy
+without coupling cleanup logic to the UI.
 
 ## Phase 4: Deployment Hardening
 

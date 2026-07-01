@@ -31,3 +31,13 @@ class RunEventsConfig(BaseModel):
         default=True,
         description="Whether RunJournal should accumulate token counts to RunRow.",
     )
+    retention_days: int | None = Field(
+        default=30,
+        ge=1,
+        description="Days to retain persisted run events before retention sweeps delete them. Set null to disable event retention sweeps.",
+    )
+    artifact_retention_days: int | None = Field(
+        default=30,
+        ge=1,
+        description="Days to retain generated artifacts before retention sweeps delete them. Set null to disable artifact retention sweeps.",
+    )
