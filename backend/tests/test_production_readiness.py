@@ -31,6 +31,7 @@ def test_demo_profile_passes_repository_readiness_checks() -> None:
         "frontend env example",
         "demo docs",
         "demo deploy bundle",
+        "production deployment docs",
     ]
 
 

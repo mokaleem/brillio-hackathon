@@ -54,6 +54,7 @@ def run_readiness_checks(
     results.append(_check_frontend_env_example(root))
     results.append(_check_demo_docs(root))
     results.append(_check_demo_deploy_bundle(root))
+    results.append(_check_production_deployment_docs(root))
     if profile == "enterprise":
         results.append(_check_enterprise_runtime_env(root, env_file))
     return results
@@ -535,6 +536,42 @@ def _check_demo_deploy_bundle(root: Path) -> CheckResult:
         "split demo compose, env example, and smoke command are present"
         if not missing_all
         else "missing: " + ", ".join(missing_all[:5]),
+    )
+
+
+def _check_production_deployment_docs(root: Path) -> CheckResult:
+    docs = root / "docs" / "production-deployment.md"
+    if not docs.is_file():
+        return CheckResult(
+            "production deployment docs",
+            False,
+            "missing: docs/production-deployment.md",
+        )
+
+    text = docs.read_text(encoding="utf-8")
+    required_phrases = [
+        "Production Deployment Guide",
+        "The Hackathon demo bundle is not a production deployment",
+        "Docker Compose Guidance",
+        "Kubernetes Guidance",
+        "DEER_FLOW_AUTH_DISABLED=0",
+        "GATEWAY_ENABLE_DOCS=false",
+        "GATEWAY_CORS_ORIGINS",
+        "DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS=low,medium",
+        "DEERFLOW_PYTHON_FUNCTION_ALLOWLIST",
+        "python scripts\\production_readiness.py --profile enterprise",
+        "/health",
+        "/api/readiness",
+        "Rollback Procedure",
+        "Release Owner Checklist",
+    ]
+    missing = [phrase for phrase in required_phrases if phrase not in text]
+    return CheckResult(
+        "production deployment docs",
+        not missing,
+        "production Compose/Kubernetes guidance, validation, and rollback steps are documented"
+        if not missing
+        else "missing: " + ", ".join(missing[:5]),
     )
 
 
