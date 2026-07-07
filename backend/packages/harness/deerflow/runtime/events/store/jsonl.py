@@ -30,6 +30,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from deerflow.runtime.events.store.base import RunEventStore
+from deerflow.utils.time import parse_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,37 @@ class JsonlRunEventStore(RunEventStore):
         if path.exists():
             path.unlink()
 
+    def _rewrite_retained_run_file(self, path: Path, cutoff: datetime) -> int:
+        removed = 0
+        retained = []
+        for line in path.read_text(encoding="utf-8").strip().splitlines():
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                retained.append(line)
+                continue
+            created_at = parse_datetime(record.get("created_at"))
+            if created_at is not None and created_at < cutoff:
+                removed += 1
+            else:
+                retained.append(json.dumps(record, default=str, ensure_ascii=False))
+        if retained:
+            path.write_text("\n".join(retained) + "\n", encoding="utf-8")
+        else:
+            path.unlink()
+        return removed
+
+    def _delete_older_than_sync(self, cutoff: datetime) -> int:
+        threads_dir = self._base_dir / "threads"
+        if not threads_dir.exists():
+            return 0
+        removed = 0
+        for path in sorted(threads_dir.glob("*/runs/*.jsonl")):
+            removed += self._rewrite_retained_run_file(path, cutoff)
+        return removed
+
     async def put(self, *, thread_id, run_id, event_type, category, content="", metadata=None, created_at=None):
         async with self._get_write_lock(thread_id):
             await self._ensure_seq_loaded(thread_id)
@@ -216,3 +248,9 @@ class JsonlRunEventStore(RunEventStore):
             count = len(events)
             await asyncio.to_thread(self._delete_run_file, thread_id, run_id)
             return count
+
+    async def delete_older_than(self, cutoff):
+        removed = await asyncio.to_thread(self._delete_older_than_sync, cutoff)
+        if removed:
+            self._seq_counters.clear()
+        return removed

@@ -27,6 +27,16 @@ def build_release_smoke_commands(
     frontend = root / "frontend"
     commands = [
         ReleaseSmokeCommand(
+            "production readiness checks",
+            root,
+            ("python", "scripts/production_readiness.py"),
+        ),
+        ReleaseSmokeCommand(
+            "dependency audit gate",
+            root,
+            ("python", "scripts/dependency_audit.py"),
+        ),
+        ReleaseSmokeCommand(
             "backend router and demo smoke tests",
             backend,
             (
@@ -35,6 +45,7 @@ def build_release_smoke_commands(
                 "pytest",
                 "tests/test_audit_router.py",
                 "tests/test_extensions_router.py",
+                "tests/test_readiness_router.py",
                 "tests/test_demo_smoke.py",
                 "-q",
             ),
@@ -47,12 +58,15 @@ def build_release_smoke_commands(
                 "run",
                 "ruff",
                 "check",
+                "app/gateway/extension_registry.py",
                 "app/gateway/routers/audit.py",
                 "app/gateway/routers/extensions.py",
+                "app/gateway/routers/readiness.py",
                 "app/gateway/app.py",
                 "app/gateway/routers/__init__.py",
                 "tests/test_audit_router.py",
                 "tests/test_extensions_router.py",
+                "tests/test_readiness_router.py",
                 "tests/test_demo_smoke.py",
             ),
         ),
@@ -67,6 +81,7 @@ def build_release_smoke_commands(
             (
                 "pnpm",
                 "test",
+                "tests/unit/app/api/health/route.test.ts",
                 "tests/unit/core/audit/api.test.ts",
                 "tests/unit/core/extensions/api.test.ts",
             ),
@@ -124,7 +139,9 @@ def _resolve_command(command: tuple[str, ...]) -> tuple[str, ...]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run the hackathon release smoke gate.")
+    parser = argparse.ArgumentParser(
+        description="Run the hackathon release smoke gate."
+    )
     parser.add_argument("--project-root", type=Path, default=REPO_ROOT)
     parser.add_argument(
         "--skip-e2e",
@@ -143,7 +160,9 @@ def main(argv: list[str] | None = None) -> int:
         include_e2e=not args.skip_e2e,
         dry_run=args.dry_run,
     )
-    print("Release smoke passed" if not args.dry_run else "Release smoke dry run complete")
+    print(
+        "Release smoke passed" if not args.dry_run else "Release smoke dry run complete"
+    )
     return 0
 
 

@@ -66,7 +66,8 @@ Unknown fields are rejected. Extension names must be lowercase hyphen-case with 
   "display_name": "HTML Report",
   "icon": null,
   "category": "Reporting",
-  "provenance": null
+  "provenance": null,
+  "approval": null
 }
 ```
 
@@ -88,6 +89,7 @@ Unknown fields are rejected. Extension names must be lowercase hyphen-case with 
 | `icon` | string or null | No | Reserved for future UI icon hints. |
 | `category` | string or null | No | UI grouping or tool config group fallback. |
 | `provenance` | object or null | No | Filled by the gateway for imported descriptors. Contains import timestamp, registry version, descriptor hash, and source URL/path/name. |
+| `approval` | object or null | Required for high risk runtime use | Capability-level approval metadata. High-risk descriptors require `approval.status: "approved"` by default even when high-risk runtime materialization is enabled. |
 
 Imported descriptors are stamped with:
 
@@ -209,15 +211,24 @@ Registry import is admin-only and fails closed.
 | --- | --- | --- |
 | `DEERFLOW_EXTENSION_IMPORT_MAX_BYTES` | `524288` | Maximum manifest JSON payload size. |
 | `DEERFLOW_EXTENSION_IMPORT_MAX_EXTENSIONS` | `200` | Maximum descriptors per imported manifest. |
+| `DEERFLOW_EXTENSION_IMPORT_SCHEMA_VERSIONS` | `1` | Comma-separated manifest schema versions accepted for import. |
+| `DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES` | unset | Optional comma-separated registry names, exact URLs/paths, or URL hostnames accepted for import. Use for enterprise source allowlists. |
 | `DEERFLOW_EXTENSION_IMPORT_ENTRYPOINT_PREFIXES` | `internal_tools.,internal_agents.,internal_mcps.,internal_skills/,company_tools.,company_agents.,company_skills/,deerflow.` | Comma-separated allowed entrypoint prefixes. Use `*` only in trusted local development. |
 
 Blocked by default:
 
 - Invalid JSON or schema violations.
 - Oversized manifests or too many descriptors.
+- Unsupported manifest schema versions.
+- Registry sources not listed in `DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES` when that allowlist is configured.
 - Duplicate `kind:name` keys already configured.
 - Python tool/agent entrypoints that are not `module:function`.
 - Path traversal, absolute paths, backslashes, control characters, or entrypoints outside the allowed prefix list.
+
+Rejected preview and commit attempts are written to the harness audit log as
+`extension.import.rejected` events. The record includes the operation, manifest
+SHA-256 hash, payload size, selected descriptor keys, source identifiers,
+errors, and warnings. The raw registry JSON is not stored in the audit row.
 
 Preview warnings:
 
@@ -240,6 +251,28 @@ Descriptors with missing `risk_level` are treated as `medium` for backward
 compatibility. Descriptors marked `high` are blocked by default even if they are
 enabled in a registry file. The runtime logs a policy warning and skips blocked
 registry tools/MCPs/skills/agents instead of exposing them to chat.
+
+High-risk descriptors have a second default gate: if
+`DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS` includes `high`, the descriptor must
+also include approval metadata with `approval.status` set to `approved`.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `DEERFLOW_EXTENSION_REQUIRE_HIGH_RISK_APPROVAL` | `true` | Require `approval.status: "approved"` before high-risk descriptors can be materialized. Set to `false` only for explicitly trusted local development. |
+
+Approval shape:
+
+```json
+{
+  "approval": {
+    "status": "approved",
+    "approved_by": "security@example.com",
+    "approved_at": "2026-07-01T00:00:00Z",
+    "ticket": "SEC-123",
+    "reason": "Reviewed for least privilege and data handling."
+  }
+}
+```
 
 ## Minimal External Registry Example
 

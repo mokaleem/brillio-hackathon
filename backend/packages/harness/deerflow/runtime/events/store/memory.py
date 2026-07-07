@@ -10,6 +10,7 @@ import bisect
 from datetime import UTC, datetime
 
 from deerflow.runtime.events.store.base import RunEventStore
+from deerflow.utils.time import parse_datetime
 
 
 class MemoryRunEventStore(RunEventStore):
@@ -156,3 +157,33 @@ class MemoryRunEventStore(RunEventStore):
         self._events_by_run.get(thread_id, {}).pop(run_id, None)
         self._messages_by_run.get(thread_id, {}).pop(run_id, None)
         return removed
+
+    async def delete_older_than(self, cutoff):
+        removed = 0
+        for thread_id, events in list(self._events.items()):
+            remaining = [event for event in events if not _is_older_than(event, cutoff)]
+            removed += len(events) - len(remaining)
+            if remaining:
+                self._events[thread_id] = remaining
+                self._messages[thread_id] = [event for event in remaining if event["category"] == "message"]
+                events_by_run: dict[str, list[dict]] = {}
+                messages_by_run: dict[str, list[dict]] = {}
+                for event in remaining:
+                    run_id = event["run_id"]
+                    events_by_run.setdefault(run_id, []).append(event)
+                    if event["category"] == "message":
+                        messages_by_run.setdefault(run_id, []).append(event)
+                self._events_by_run[thread_id] = events_by_run
+                self._messages_by_run[thread_id] = messages_by_run
+            else:
+                self._events.pop(thread_id, None)
+                self._messages.pop(thread_id, None)
+                self._events_by_run.pop(thread_id, None)
+                self._messages_by_run.pop(thread_id, None)
+                self._seq_counters.pop(thread_id, None)
+        return removed
+
+
+def _is_older_than(event: dict, cutoff: datetime) -> bool:
+    created_at = parse_datetime(event.get("created_at"))
+    return created_at is not None and created_at < cutoff

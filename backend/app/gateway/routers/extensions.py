@@ -7,12 +7,16 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, ValidationError
 
+from app.gateway import extension_registry
 from app.gateway.deps import require_admin_user
+from deerflow.audit import record_audit_event
 from deerflow.extensions import (
+    ExtensionApproval,
     ExtensionDescriptor,
     ExtensionKind,
     ExtensionManifest,
@@ -23,9 +27,10 @@ from deerflow.extensions import (
 )
 
 _ADMIN_REQUIRED_DETAIL = "Admin privileges required to manage extension registry configuration."
-_IMPORTED_EXTENSION_MANIFEST = Path("registries") / "imported_extensions.json"
+_IMPORTED_EXTENSION_MANIFEST = extension_registry.IMPORTED_EXTENSION_MANIFEST
 _DEFAULT_IMPORT_MAX_BYTES = 512 * 1024
 _DEFAULT_IMPORT_MAX_EXTENSIONS = 200
+_DEFAULT_IMPORT_SCHEMA_VERSIONS = (1,)
 _DEFAULT_ALLOWED_ENTRYPOINT_PREFIXES = (
     "internal_tools.",
     "internal_agents.",
@@ -59,6 +64,7 @@ class ExtensionResponse(BaseModel):
     icon: str | None = None
     category: str | None = None
     provenance: ExtensionProvenance | None = None
+    approval: ExtensionApproval | None = None
 
 
 class ExtensionsListResponse(BaseModel):
@@ -177,7 +183,9 @@ async def preview_extension_import(request: Request, body: ExtensionImportPrevie
     repo_root = _repo_root()
     manifest, errors = _parse_import_manifest(body.manifest_json)
     if manifest is None:
+        _record_import_rejection(operation="preview", manifest_json=body.manifest_json, errors=errors)
         return ExtensionImportPreviewResponse(valid=False, count=0, errors=errors)
+    errors.extend(_import_manifest_policy_errors(manifest))
     safety_errors, safety_warnings = _import_safety_messages(manifest.extensions)
     errors.extend(safety_errors)
     changes = _preview_import_changes(manifest.extensions, repo_root=repo_root)
@@ -186,6 +194,14 @@ async def preview_extension_import(request: Request, body: ExtensionImportPrevie
         *safety_warnings,
         *[f"Duplicate extension already configured: {key}" for key in duplicates],
     ]
+    if errors or duplicates:
+        _record_import_rejection(
+            operation="preview",
+            manifest_json=body.manifest_json,
+            errors=[*errors, *[f"Duplicate extension already configured: {key}" for key in duplicates]],
+            warnings=warnings,
+            manifest=manifest,
+        )
     return ExtensionImportPreviewResponse(
         valid=len(errors) == 0 and len(duplicates) == 0,
         count=len(manifest.extensions),
@@ -203,19 +219,56 @@ async def import_extensions(request: Request, body: ExtensionImportRequest) -> E
     repo_root = _repo_root()
     manifest, errors = _parse_import_manifest(body.manifest_json)
     if manifest is None:
+        _record_import_rejection(
+            operation="commit",
+            manifest_json=body.manifest_json,
+            errors=errors,
+            selected=body.selected,
+        )
         raise HTTPException(status_code=400, detail=errors[0] if errors else "Invalid extension manifest.")
+    policy_errors = _import_manifest_policy_errors(manifest)
+    if policy_errors:
+        _record_import_rejection(
+            operation="commit",
+            manifest_json=body.manifest_json,
+            errors=policy_errors,
+            manifest=manifest,
+            selected=body.selected,
+        )
+        raise HTTPException(status_code=400, detail=policy_errors[0])
 
     selected = set(body.selected)
     extensions_to_import = [extension.model_copy(update={"enabled": True}) for extension in manifest.extensions if not selected or _extension_key(extension) in selected]
     if not extensions_to_import:
+        _record_import_rejection(
+            operation="commit",
+            manifest_json=body.manifest_json,
+            errors=["Select at least one extension to import."],
+            manifest=manifest,
+            selected=body.selected,
+        )
         raise HTTPException(status_code=400, detail="Select at least one extension to import.")
 
     safety_errors, _ = _import_safety_messages(extensions_to_import)
     if safety_errors:
+        _record_import_rejection(
+            operation="commit",
+            manifest_json=body.manifest_json,
+            errors=safety_errors,
+            manifest=manifest,
+            selected=body.selected,
+        )
         raise HTTPException(status_code=400, detail=safety_errors[0])
 
     duplicates = _duplicate_extension_keys(extensions_to_import, repo_root=repo_root)
     if duplicates:
+        _record_import_rejection(
+            operation="commit",
+            manifest_json=body.manifest_json,
+            errors=[f"Duplicate extensions already configured: {', '.join(duplicates)}"],
+            manifest=manifest,
+            selected=body.selected,
+        )
         raise HTTPException(status_code=409, detail=f"Duplicate extensions already configured: {', '.join(duplicates)}")
 
     _append_imported_extensions(repo_root, manifest=manifest, extensions=extensions_to_import)
@@ -233,24 +286,15 @@ async def remove_imported_extension(request: Request, kind: ExtensionKind, name:
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[4]
+    return extension_registry.repo_root()
 
 
 def _manifest_paths(repo_root: Path) -> list[Path]:
-    configured = os.environ.get("DEERFLOW_EXTENSION_MANIFESTS")
-    if configured:
-        return _with_imported_manifest(
-            [_resolve_manifest_path(path, repo_root) for path in configured.split(os.pathsep) if path],
-            repo_root,
-        )
-    return _with_imported_manifest([repo_root / "registries" / "internal_extensions.example.json"], repo_root)
+    return extension_registry.manifest_paths(repo_root)
 
 
 def _resolve_manifest_path(path: str, repo_root: Path) -> Path:
-    resolved = Path(path)
-    if not resolved.is_absolute():
-        resolved = repo_root / resolved
-    return resolved
+    return extension_registry.resolve_manifest_path(path, repo_root)
 
 
 def _catalog_response(extensions: list[Any]) -> ExtensionsListResponse:
@@ -353,6 +397,66 @@ def _parse_import_manifest(manifest_json: str) -> tuple[ExtensionManifest | None
     return manifest, []
 
 
+def _record_import_rejection(
+    *,
+    operation: Literal["preview", "commit"],
+    manifest_json: str,
+    errors: list[str],
+    warnings: list[str] | None = None,
+    manifest: ExtensionManifest | None = None,
+    selected: list[str] | None = None,
+) -> None:
+    encoded = manifest_json.encode("utf-8")
+    source_identifiers = sorted(_manifest_source_identifiers(manifest)) if manifest else []
+    extension_keys = sorted(_extension_key(extension) for extension in manifest.extensions) if manifest else []
+    primary_error = errors[0] if errors else "Extension import rejected."
+    try:
+        record_audit_event(
+            event="extension.import.rejected",
+            status="rejected",
+            extension={
+                "kind": "registry",
+                "name": _import_audit_source_name(manifest),
+                "source": "registry",
+                "operation": operation,
+            },
+            input_summary={
+                "operation": operation,
+                "manifest_sha256": hashlib.sha256(encoded).hexdigest(),
+                "manifest_bytes": len(encoded),
+                "selected": sorted(selected or []),
+                "extension_count": len(manifest.extensions) if manifest else 0,
+                "extension_keys": extension_keys[:20],
+                "extension_keys_truncated": len(extension_keys) > 20,
+                "source_identifiers": source_identifiers[:20],
+                "source_identifiers_truncated": len(source_identifiers) > 20,
+            },
+            output_summary={
+                "error_count": len(errors),
+                "errors": errors[:20],
+                "errors_truncated": len(errors) > 20,
+                "warning_count": len(warnings or []),
+                "warnings": (warnings or [])[:20],
+                "warnings_truncated": len(warnings or []) > 20,
+            },
+            artifacts=[],
+            error={"type": "ExtensionImportRejected", "message": primary_error},
+        )
+    except Exception:
+        return
+
+
+def _import_audit_source_name(manifest: ExtensionManifest | None) -> str:
+    if manifest is None:
+        return "unparsed-manifest"
+    source = _select_provenance_source(manifest)
+    for key in ("name", "url", "path"):
+        value = source.get(key)
+        if value:
+            return value
+    return "unknown-registry"
+
+
 def _import_safety_messages(extensions: list[ExtensionDescriptor]) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
@@ -409,6 +513,71 @@ def _import_max_manifest_bytes() -> int:
 
 def _import_max_extensions() -> int:
     return _env_positive_int("DEERFLOW_EXTENSION_IMPORT_MAX_EXTENSIONS", _DEFAULT_IMPORT_MAX_EXTENSIONS)
+
+
+def _import_manifest_policy_errors(manifest: ExtensionManifest) -> list[str]:
+    errors: list[str] = []
+    supported_versions = _supported_import_schema_versions()
+    if manifest.version not in supported_versions:
+        errors.append(f"Unsupported extension registry schema version {manifest.version}. Supported versions: {', '.join(str(version) for version in supported_versions)}.")
+
+    allowed_sources = _allowed_import_sources()
+    if allowed_sources:
+        source_identifiers = _manifest_source_identifiers(manifest)
+        if not source_identifiers:
+            errors.append("Imported registry must declare source metadata when DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES is configured.")
+        elif "*" not in allowed_sources and source_identifiers.isdisjoint(allowed_sources):
+            errors.append("Imported registry source is not allowed by DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES.")
+    return errors
+
+
+def _supported_import_schema_versions() -> tuple[int, ...]:
+    configured = os.environ.get("DEERFLOW_EXTENSION_IMPORT_SCHEMA_VERSIONS")
+    if not configured:
+        return _DEFAULT_IMPORT_SCHEMA_VERSIONS
+    versions: list[int] = []
+    for item in configured.split(","):
+        stripped = item.strip()
+        if not stripped:
+            continue
+        try:
+            version = int(stripped)
+        except ValueError:
+            continue
+        if version >= 1:
+            versions.append(version)
+    return tuple(sorted(set(versions))) or _DEFAULT_IMPORT_SCHEMA_VERSIONS
+
+
+def _allowed_import_sources() -> set[str]:
+    configured = os.environ.get("DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES")
+    if configured is None:
+        return set()
+    return {item.strip() for item in configured.split(",") if item.strip()}
+
+
+def _manifest_source_identifiers(manifest: ExtensionManifest) -> set[str]:
+    identifiers: set[str] = set()
+    for key in ("registry", "name", "url", "source_url", "path", "source_path"):
+        value = manifest.metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            identifiers.update(_source_identifier_variants(value))
+    for item in manifest.imports:
+        identifiers.update(_source_identifier_variants(item.name))
+        if item.url:
+            identifiers.update(_source_identifier_variants(item.url))
+        if item.path:
+            identifiers.update(_source_identifier_variants(item.path))
+    return identifiers
+
+
+def _source_identifier_variants(value: str) -> set[str]:
+    stripped = value.strip()
+    variants = {stripped}
+    parsed = urlparse(stripped)
+    if parsed.hostname:
+        variants.add(parsed.hostname)
+    return variants
 
 
 def _env_positive_int(name: str, default: int) -> int:
@@ -544,10 +713,4 @@ def _descriptor_hash(extension: ExtensionDescriptor) -> str:
 
 
 def _with_imported_manifest(paths: list[Path], repo_root: Path) -> list[Path]:
-    imported = repo_root / _IMPORTED_EXTENSION_MANIFEST
-    if not imported.is_file():
-        return paths
-    imported_resolved = imported.resolve(strict=False)
-    if imported_resolved in {path.resolve(strict=False) for path in paths}:
-        return paths
-    return [*paths, imported]
+    return extension_registry.with_imported_manifest(paths, repo_root)

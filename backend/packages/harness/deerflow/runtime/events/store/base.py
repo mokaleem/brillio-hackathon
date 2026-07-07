@@ -107,3 +107,7 @@ class RunEventStore(abc.ABC):
     @abc.abstractmethod
     async def delete_by_run(self, thread_id: str, run_id: str) -> int:
         """Delete all events for a specific run. Return the number of deleted events."""
+
+    @abc.abstractmethod
+    async def delete_older_than(self, cutoff) -> int:
+        """Delete events with created_at older than *cutoff*. Return the number of deleted events."""

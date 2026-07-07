@@ -23,17 +23,13 @@ def record_extension_execution(
     ended_at: datetime | None = None,
     error: BaseException | None = None,
 ) -> Path | None:
-    if os.environ.get("DEER_FLOW_AUDIT_DISABLED", "").lower() in {"1", "true", "yes"}:
-        return None
-
     ended = ended_at or datetime.now(UTC)
-    record = {
-        "event": "extension.execution",
-        "started_at": _format_time(started_at),
-        "ended_at": _format_time(ended),
-        "duration_ms": max(0, int((ended - started_at).total_seconds() * 1000)),
-        "status": status,
-        "extension": {
+    return record_audit_event(
+        event="extension.execution",
+        status=status,
+        started_at=started_at,
+        ended_at=ended,
+        extension={
             "kind": extension.kind.value,
             "name": extension.name,
             "display_name": extension.display_name,
@@ -42,10 +38,42 @@ def record_extension_execution(
             "risk_level": extension.risk_level,
             "owner": extension.owner,
             "provenance": extension.provenance.model_dump(mode="json") if extension.provenance else None,
+            "approval": extension.approval.model_dump(mode="json") if extension.approval else None,
         },
-        "input_summary": summarize_value(input_value),
-        "output_summary": summarize_value(output_value),
-        "artifacts": extract_artifact_paths(output_value),
+        input_summary=summarize_value(input_value),
+        output_summary=summarize_value(output_value),
+        artifacts=extract_artifact_paths(output_value),
+        error=error,
+    )
+
+
+def record_audit_event(
+    *,
+    event: str,
+    status: str,
+    extension: Mapping[str, Any],
+    input_summary: Mapping[str, Any] | None = None,
+    output_summary: Mapping[str, Any] | None = None,
+    artifacts: list[str] | None = None,
+    started_at: datetime | None = None,
+    ended_at: datetime | None = None,
+    error: BaseException | Mapping[str, Any] | None = None,
+) -> Path | None:
+    if os.environ.get("DEER_FLOW_AUDIT_DISABLED", "").lower() in {"1", "true", "yes"}:
+        return None
+
+    started = started_at or datetime.now(UTC)
+    ended = ended_at or started
+    record = {
+        "event": event,
+        "started_at": _format_time(started),
+        "ended_at": _format_time(ended),
+        "duration_ms": max(0, int((ended - started).total_seconds() * 1000)),
+        "status": status,
+        "extension": dict(extension),
+        "input_summary": dict(input_summary or {"type": "none"}),
+        "output_summary": dict(output_summary or {"type": "none"}),
+        "artifacts": artifacts or [],
         "error": _summarize_error(error),
     }
     path = audit_log_path()
@@ -113,9 +141,16 @@ def _format_time(value: datetime) -> str:
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
-def _summarize_error(error: BaseException | None) -> dict[str, str] | None:
+def _summarize_error(error: BaseException | Mapping[str, Any] | None) -> dict[str, str] | None:
     if error is None:
         return None
+    if isinstance(error, Mapping):
+        error_type = error.get("type", "Error")
+        message = error.get("message", "")
+        return {
+            "type": str(error_type)[:_MAX_PREVIEW_CHARS],
+            "message": str(message)[:_MAX_PREVIEW_CHARS],
+        }
     return {
         "type": type(error).__name__,
         "message": str(error)[:_MAX_PREVIEW_CHARS],

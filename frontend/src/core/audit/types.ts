@@ -35,3 +35,18 @@ export interface AuditExecutionsResponse {
   count: number;
   path: string;
 }
+
+export interface AuditEvidenceSummary {
+  total_records: number;
+  status_counts: Record<string, number>;
+  extension_counts: Record<string, number>;
+  artifact_count: number;
+}
+
+export interface AuditEvidenceExport {
+  schema_version: number;
+  generated_at: string;
+  source_path: string;
+  summary: AuditEvidenceSummary;
+  records: AuditExecutionRecord[];
+}

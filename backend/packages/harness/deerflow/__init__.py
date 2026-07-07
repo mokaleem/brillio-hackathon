@@ -17,6 +17,7 @@ from deerflow.extensions import (
     load_extension_manifest,
     validate_extension_registry,
 )
+from deerflow.retention import RetentionSweepResult, sweep_generated_artifacts, sweep_retention_policy, sweep_run_events
 
 try:
     __version__ = version("deerflow-harness")
@@ -32,6 +33,7 @@ __all__ = [
     "ExtensionRegistryHealth",
     "ExtensionSource",
     "RegistryImport",
+    "RetentionSweepResult",
     "StreamEvent",
     "__version__",
     "audit_log_path",
@@ -41,6 +43,9 @@ __all__ = [
     "load_extension_catalog",
     "load_extension_manifest",
     "record_extension_execution",
+    "sweep_generated_artifacts",
+    "sweep_retention_policy",
+    "sweep_run_events",
     "validate_extension_registry",
 ]
 

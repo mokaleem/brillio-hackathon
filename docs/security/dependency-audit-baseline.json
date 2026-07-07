@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "generated_at": "2026-07-01",
+  "frontend": {
+    "allow": [
+      {
+        "id": "GHSA-r5fr-rjxr-66jc",
+        "package": "lodash-es",
+        "severity": "high",
+        "owner": "platform",
+        "expires": "2026-08-15",
+        "reason": "Transitive Nextra/Mermaid dependency; npm currently does not provide a patched lodash-es 4.18.0 release to satisfy the advisory."
+      },
+      {
+        "id": "GHSA-wh4c-j3r5-mjhp",
+        "package": "@xmldom/xmldom",
+        "severity": "high",
+        "owner": "platform",
+        "expires": "2026-08-15",
+        "reason": "Transitive Nextra/MathJax/Speech Rule Engine dependency used by docs rendering; tracked until Nextra ships a patched dependency chain."
+      },
+      {
+        "id": "GHSA-2v35-w6hq-6mfw",
+        "package": "@xmldom/xmldom",
+        "severity": "high",
+        "owner": "platform",
+        "expires": "2026-08-15",
+        "reason": "Transitive Nextra/MathJax/Speech Rule Engine dependency used by docs rendering; tracked until Nextra ships a patched dependency chain."
+      },
+      {
+        "id": "GHSA-f6ww-3ggp-fr8h",
+        "package": "@xmldom/xmldom",
+        "severity": "high",
+        "owner": "platform",
+        "expires": "2026-08-15",
+        "reason": "Transitive Nextra/MathJax/Speech Rule Engine dependency used by docs rendering; tracked until Nextra ships a patched dependency chain."
+      },
+      {
+        "id": "GHSA-x6wf-f3px-wcqx",
+        "package": "@xmldom/xmldom",
+        "severity": "high",
+        "owner": "platform",
+        "expires": "2026-08-15",
+        "reason": "Transitive Nextra/MathJax/Speech Rule Engine dependency used by docs rendering; tracked until Nextra ships a patched dependency chain."
+      },
+      {
+        "id": "GHSA-j759-j44w-7fr8",
+        "package": "@xmldom/xmldom",
+        "severity": "high",
+        "owner": "platform",
+        "expires": "2026-08-15",
+        "reason": "Transitive Nextra/MathJax/Speech Rule Engine dependency used by docs rendering; tracked until Nextra ships a patched dependency chain."
+      }
+    ]
+  }
+}

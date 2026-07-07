@@ -21,6 +21,8 @@ def test_release_smoke_includes_backend_frontend_and_e2e_steps() -> None:
 
     labels = [command.label for command in commands]
     assert labels == [
+        "production readiness checks",
+        "dependency audit gate",
         "backend router and demo smoke tests",
         "backend focused ruff checks",
         "backend format check",
@@ -29,7 +31,11 @@ def test_release_smoke_includes_backend_frontend_and_e2e_steps() -> None:
         "frontend lint",
         "hackathon chromium e2e",
     ]
-    assert commands[0].cwd == REPO_ROOT / "backend"
+    assert commands[0].cwd == REPO_ROOT
+    assert commands[0].command == ("python", "scripts/production_readiness.py")
+    assert commands[1].command == ("python", "scripts/dependency_audit.py")
+    assert "app/gateway/extension_registry.py" in commands[3].command
+    assert "tests/unit/app/api/health/route.test.ts" in commands[5].command
     assert commands[-1].cwd == REPO_ROOT / "frontend"
     assert commands[-1].command == (
         "pnpm",
@@ -45,6 +51,8 @@ def test_release_smoke_can_skip_e2e_for_fast_local_checks() -> None:
     commands = release_smoke.build_release_smoke_commands(REPO_ROOT, include_e2e=False)
 
     assert [command.label for command in commands] == [
+        "production readiness checks",
+        "dependency audit gate",
         "backend router and demo smoke tests",
         "backend focused ruff checks",
         "backend format check",

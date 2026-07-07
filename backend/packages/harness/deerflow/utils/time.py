@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 
-__all__ = ["coerce_iso", "now_iso"]
+__all__ = ["coerce_iso", "now_iso", "parse_datetime"]
 
 _UNIX_TIMESTAMP_PATTERN = re.compile(r"^\d{10}(?:\.\d+)?$")
 """Matches the unix-timestamp string shape historically written by
@@ -73,3 +73,36 @@ def coerce_iso(value: object) -> str:
                 return value
         return value
     return str(value)
+
+
+def parse_datetime(value: object) -> datetime | None:
+    """Best-effort parse a stored timestamp into a timezone-aware UTC datetime."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, (int, float)) and not isinstance(value, bool):
+        try:
+            parsed = datetime.fromtimestamp(float(value), UTC)
+        except (ValueError, OverflowError, OSError):
+            return None
+    elif isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return None
+        if _UNIX_TIMESTAMP_PATTERN.match(raw):
+            try:
+                parsed = datetime.fromtimestamp(float(raw), UTC)
+            except (ValueError, OverflowError, OSError):
+                return None
+        else:
+            try:
+                parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+    else:
+        return None
+
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)

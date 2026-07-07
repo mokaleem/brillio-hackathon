@@ -717,6 +717,7 @@ export function useThreadStream({
         thread_id: meta.thread_id,
         created_at: now,
         updated_at: now,
+        state_updated_at: now,
         metadata: context.agent_name ? { agent_name: context.agent_name } : {},
         status: "busy",
         values: {
@@ -730,6 +731,7 @@ export function useThreadStream({
         thread_id: meta.thread_id,
         created_at: now,
         updated_at: now,
+        state_updated_at: now,
         metadata: context.agent_name ? { agent_name: context.agent_name } : {},
         status: "busy",
         values: {

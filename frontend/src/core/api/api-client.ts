@@ -144,7 +144,7 @@ function createStaticClient(): LangGraphClient {
 
   client.threads.update = (async (threadId) => {
     return loadStaticDemoThread(threadId);
-  }) as typeof client.threads.update;
+  }) as unknown as typeof client.threads.update;
 
   client.runs.list = (async () => []) as typeof client.runs.list;
   client.runs.stream = async function* () {

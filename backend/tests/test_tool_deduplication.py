@@ -240,6 +240,12 @@ def test_high_risk_registry_tools_load_when_runtime_policy_allows_high(mock_bash
                 "source": "registry",
                 "entrypoint": REGISTRY_EXPORT_TOOL_ENTRYPOINT,
                 "risk_level": "high",
+                "approval": {
+                    "status": "approved",
+                    "approved_by": "security-review",
+                    "approved_at": "2026-07-01T00:00:00Z",
+                    "ticket": "SEC-123",
+                },
             },
         ],
     )
