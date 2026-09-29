@@ -23,7 +23,7 @@ def _get_config_signature() -> _ConfigSignature:
         Stable path/mtime pairs for the extensions config and registry manifests.
     """
     from deerflow.config.extensions_config import ExtensionsConfig
-    from deerflow.extensions import get_runtime_extension_manifest_paths
+    from deerflow.internal_registry import get_runtime_extension_manifest_paths
 
     paths: list[Path] = []
     config_path = ExtensionsConfig.resolve_config_path()

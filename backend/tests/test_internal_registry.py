@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from deerflow.config.extensions_config import McpServerConfig
 from deerflow.config.tool_config import ToolConfig
-from deerflow.extensions import (
+from deerflow.internal_registry import (
     ExtensionKind,
     ExtensionManifest,
     ExtensionPermissionError,

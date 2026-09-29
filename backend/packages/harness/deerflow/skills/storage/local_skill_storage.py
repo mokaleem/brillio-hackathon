@@ -83,7 +83,7 @@ class LocalSkillStorage(SkillStorage):
 
     def _iter_registry_skill_files(self) -> Iterable[tuple[SkillCategory, Path, Path]]:
         try:
-            from deerflow.extensions import ExtensionKind, load_runtime_extension_catalog, materialize_skill_path
+            from deerflow.internal_registry import ExtensionKind, load_runtime_extension_catalog, materialize_skill_path
 
             catalog = load_runtime_extension_catalog()
         except Exception:

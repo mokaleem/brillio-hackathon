@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from deerflow.extensions.descriptors import ExtensionDescriptor
+from deerflow.internal_registry.descriptors import ExtensionDescriptor
 
 DEFAULT_ALLOWED_RISK_LEVELS = frozenset({"low", "medium"})
 VALID_RISK_LEVELS = frozenset({"low", "medium", "high"})

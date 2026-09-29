@@ -59,7 +59,7 @@ The frontend is a stateful chat application. Users create **threads** (conversat
 - **`content/`** — MDX content (blog posts, docs) rendered by the app
 - **`styles/`** — Global CSS with Tailwind v4 `@import` syntax and CSS variables for theming
 - **`typings/`** — Ambient TypeScript declarations
-- **`core/extensions/`**: Typed API client and domain types for the dynamic agent/MCP/tool/skill catalog exposed by `GET /api/extensions`.
+- **`core/internal-registry/`**: Typed API client and domain types for the dynamic agent/MCP/tool/skill catalog exposed by `GET /api/extensions`.
 - Root files: `env.js` (env validation), `mdx-components.ts` (MDX component map)
 
 ### Data Flow

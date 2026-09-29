@@ -88,7 +88,7 @@ jobs:
 
       - name: Run focused frontend unit tests
         working-directory: frontend
-        run: pnpm test tests/unit/core/extensions/browser.test.ts tests/unit/core/extensions/api.test.ts tests/unit/core/threads/timeline.test.ts
+        run: pnpm test tests/unit/core/internal-registry/browser.test.ts tests/unit/core/internal-registry/api.test.ts tests/unit/core/threads/timeline.test.ts
 
   demo-e2e:
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}

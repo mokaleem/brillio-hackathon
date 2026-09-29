@@ -297,11 +297,11 @@ def _check_admin_readiness_endpoint(root: Path) -> CheckResult:
 
 
 def _check_runtime_approval_policy(root: Path) -> CheckResult:
-    descriptors = root / "backend" / "packages" / "harness" / "deerflow" / "extensions" / "descriptors.py"
-    policy = root / "backend" / "packages" / "harness" / "deerflow" / "extensions" / "policy.py"
+    descriptors = root / "backend" / "packages" / "harness" / "deerflow" / "internal_registry" / "descriptors.py"
+    policy = root / "backend" / "packages" / "harness" / "deerflow" / "internal_registry" / "policy.py"
     readiness = root / "backend" / "app" / "gateway" / "routers" / "readiness.py"
     docs = root / "docs" / "extension-registry-schema.md"
-    tests = root / "backend" / "tests" / "test_extension_registry.py"
+    tests = root / "backend" / "tests" / "test_internal_registry.py"
     missing = [
         path.relative_to(root).as_posix()
         for path in (descriptors, policy, readiness, docs, tests)

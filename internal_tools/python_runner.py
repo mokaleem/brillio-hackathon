@@ -7,7 +7,7 @@ from typing import Any
 
 from langchain_core.tools import tool
 
-from deerflow.extensions.entrypoints import resolve_python_entrypoint
+from deerflow.internal_registry.entrypoints import resolve_python_entrypoint
 
 DEFAULT_ALLOWED_ENTRYPOINTS = {
     "internal_tools.python_examples:summarize_metrics",

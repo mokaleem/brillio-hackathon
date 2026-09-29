@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from deerflow.config.runtime_paths import project_root
-from deerflow.extensions.loader import ExtensionCatalog, load_extension_catalog
+from deerflow.internal_registry.loader import ExtensionCatalog, load_extension_catalog
 
 EXTENSION_MANIFESTS_ENV = "DEERFLOW_EXTENSION_MANIFESTS"
 DEFAULT_EXTENSION_MANIFEST = Path("registries") / "internal_extensions.example.json"

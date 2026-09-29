@@ -12,8 +12,8 @@ import {
   requiresCapabilityApproval,
   summarizeExtensionConfig,
   summarizeExtensions,
-} from "@/core/extensions/browser";
-import type { ExtensionDescriptor } from "@/core/extensions/types";
+} from "@/core/internal-registry/browser";
+import type { ExtensionDescriptor } from "@/core/internal-registry/types";
 
 const extensions: ExtensionDescriptor[] = [
   {

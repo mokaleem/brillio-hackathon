@@ -18,7 +18,7 @@ import {
   removeImportedExtension,
   updateExtensionEnabled,
   validateExtensions,
-} from "@/core/extensions/api";
+} from "@/core/internal-registry/api";
 
 const mockedFetch = rs.mocked(fetcher);
 
