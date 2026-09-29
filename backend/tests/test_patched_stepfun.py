@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import openai
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 
 
@@ -265,8 +266,9 @@ def test_create_chat_result_reads_reasoning_from_sdk_object():
     class FakeChoice:
         message = FakeMessage()
 
-    class FakeResponse:
-        choices = [FakeChoice()]
+    # langchain-openai >=1.6 only accepts dicts or openai.BaseModel responses.
+    class FakeResponse(openai.BaseModel):
+        choices: list
 
         def model_dump(self, **kwargs):
             return {
@@ -282,7 +284,7 @@ def test_create_chat_result_reads_reasoning_from_sdk_object():
                 "model": "step-3.7-flash",
             }
 
-    result = model._create_chat_result(FakeResponse())
+    result = model._create_chat_result(FakeResponse(choices=[FakeChoice()]))
     assert result.generations[0].message.additional_kwargs["reasoning_content"] == "Reasoning stored on the SDK message object."
 
 
