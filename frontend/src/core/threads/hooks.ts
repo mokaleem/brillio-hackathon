@@ -162,7 +162,7 @@ function dedupeMessagesByIdentity(messages: Message[]): Message[] {
             ...message.additional_kwargs,
             turn_duration: preservedTurnDurations.get(identity),
           },
-        } as Message;
+        };
       }
       return message;
     });
@@ -370,7 +370,7 @@ export function mergeMessages(
           ...message.additional_kwargs,
           turn_duration: savedTurnDurations.get(identity),
         },
-      } as Message;
+      };
     }
     return message;
   });

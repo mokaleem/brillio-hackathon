@@ -1,0 +1,24 @@
+
+> deer-flow-frontend@2.1.0 dev D:\apps\brillio-hackathon\frontend
+> next dev --turbo
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.4.21:3000
+✓ Ready in 1688ms
+- [36minfo[0m [nextra] You have Next.js i18n enabled, read here https://nextjs.org/docs/app/building-your-application/routing/internationalization for the docs.
+- Experiments (use with caution):
+  · optimizePackageImports
+
+○ Compiling / ...
+ GET / 200 in 14.4s (next.js: 12.4s, application-code: 1980ms)
+ GET / 200 in 354ms (next.js: 19ms, application-code: 335ms)
+ GET / 200 in 319ms (next.js: 16ms, application-code: 304ms)
+ GET / 200 in 261ms (next.js: 14ms, application-code: 247ms)
+○ Compiling /workspace/extensions ...
+ GET /workspace/extensions 307 in 25.8s (next.js: 24.3s, application-code: 1554ms)
+○ Compiling /login ...
+ GET /login 200 in 4.5s (next.js: 4.1s, application-code: 302ms)
+○ Compiling /_error ...
+[?25h
+ ELIFECYCLE  Command failed with exit code 4294967295.

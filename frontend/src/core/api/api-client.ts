@@ -9,7 +9,6 @@ import {
   loadStaticDemoThreads,
   staticDemoThreadState,
 } from "../threads/static-demo";
-import type { AgentThreadState } from "../threads/types";
 
 import { isStateChangingMethod, readCsrfCookie } from "./fetcher";
 import { sanitizeRunStreamOptions } from "./stream-mode";
@@ -146,15 +145,15 @@ function createStaticClient(): LangGraphClient {
     return loadStaticDemoThread(threadId);
   }) as unknown as typeof client.threads.update;
 
-  client.runs.list = (async () => []) as typeof client.runs.list;
+  client.runs.list = async () => [];
   client.runs.stream = async function* () {
     /* empty */
-  } as typeof client.runs.stream;
+  };
   client.runs.joinStream = async function* () {
     /* empty */
   } as typeof client.runs.joinStream;
 
-  return client as LangGraphClient<AgentThreadState>;
+  return client;
 }
 
 const _clients = new Map<string, LangGraphClient>();
