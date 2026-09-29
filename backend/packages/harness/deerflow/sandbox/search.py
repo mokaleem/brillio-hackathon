@@ -43,6 +43,7 @@ IGNORE_PATTERNS = [
     "*.log",
     "*.tmp",
     "*.temp",
+    ".upload-*.part",
     "*.bak",
     "*.cache",
     ".cache",
@@ -89,13 +90,32 @@ def should_ignore_path(path: str) -> bool:
     return any(should_ignore_name(segment) for segment in path.replace("\\", "/").split("/") if segment)
 
 
+def _match_segments(pattern_parts: tuple[str, ...], path_parts: tuple[str, ...]) -> bool:
+    # Positions in ``path_parts`` reachable after consuming each pattern part;
+    # ``**`` spans zero or more whole segments, any other part exactly one.
+    reachable = {0}
+    for part in pattern_parts:
+        if part == "**":
+            reachable = set(range(min(reachable), len(path_parts) + 1))
+        else:
+            reachable = {i + 1 for i in reachable if i < len(path_parts) and fnmatch.fnmatchcase(path_parts[i], part)}
+        if not reachable:
+            return False
+    return len(path_parts) in reachable
+
+
 def path_matches(pattern: str, rel_path: str) -> bool:
-    path = PurePosixPath(rel_path)
-    if path.match(pattern):
-        return True
-    if pattern.startswith("**/"):
-        return path.match(pattern[3:])
-    return False
+    """Match ``rel_path`` (relative to the search root) against a glob pattern.
+
+    A pattern without ``/`` matches the basename at any depth (``*.py``). Any
+    other pattern is anchored at the search root, and ``**`` matches zero or
+    more directories (``src/**/*.py`` includes ``src/top.py``).
+    ``PurePosixPath.match`` is not used for these: it matches from the right
+    and treats ``**`` as a single-segment ``*``.
+    """
+    if "/" not in pattern:
+        return PurePosixPath(rel_path).match(pattern)
+    return _match_segments(PurePosixPath(pattern).parts, PurePosixPath(rel_path).parts)
 
 
 def truncate_line(line: str, max_chars: int = DEFAULT_LINE_SUMMARY_LENGTH) -> str:
@@ -168,7 +188,8 @@ def find_grep_matches(
 
     if not root.exists():
         raise FileNotFoundError(root)
-    if not root.is_dir():
+    root_is_file = root.is_file()
+    if not root_is_file and not root.is_dir():
         raise NotADirectoryError(root)
 
     regex_source = re.escape(pattern) if literal else pattern
@@ -178,44 +199,47 @@ def find_grep_matches(
     # Skip lines longer than this to prevent ReDoS on minified / no-newline files.
     _max_line_chars = line_summary_length * 10
 
-    for current_root, dirs, files in os.walk(root):
-        dirs[:] = [name for name in dirs if not should_ignore_name(name)]
-        rel_dir = Path(current_root).relative_to(root)
+    def candidate_files():
+        if root_is_file:
+            yield root, root.name
+            return
 
-        for name in files:
-            if should_ignore_name(name):
+        for current_root, dirs, files in os.walk(root):
+            dirs[:] = [name for name in dirs if not should_ignore_name(name)]
+            rel_dir = Path(current_root).relative_to(root)
+            for name in files:
+                if should_ignore_name(name):
+                    continue
+                yield Path(current_root) / name, (rel_dir / name).as_posix()
+
+    for candidate_path, rel_path in candidate_files():
+        if glob_pattern is not None and not path_matches(glob_pattern, rel_path):
+            continue
+
+        try:
+            if not root_is_file and candidate_path.is_symlink():
                 continue
-
-            candidate_path = Path(current_root) / name
-            rel_path = (rel_dir / name).as_posix()
-
-            if glob_pattern is not None and not path_matches(glob_pattern, rel_path):
+            file_path = candidate_path.resolve()
+            if not root_is_file and not file_path.is_relative_to(root):
                 continue
-
-            try:
-                if candidate_path.is_symlink():
-                    continue
-                file_path = candidate_path.resolve()
-                if not file_path.is_relative_to(root):
-                    continue
-                if file_path.stat().st_size > max_file_size or is_binary_file(file_path):
-                    continue
-                with file_path.open(encoding="utf-8", errors="replace") as handle:
-                    for line_number, line in enumerate(handle, start=1):
-                        if len(line) > _max_line_chars:
-                            continue
-                        if regex.search(line):
-                            matches.append(
-                                GrepMatch(
-                                    path=str(file_path),
-                                    line_number=line_number,
-                                    line=truncate_line(line, line_summary_length),
-                                )
+            if file_path.stat().st_size > max_file_size or is_binary_file(file_path):
+                continue
+            with file_path.open(encoding="utf-8", errors="replace") as handle:
+                for line_number, line in enumerate(handle, start=1):
+                    if len(line) > _max_line_chars:
+                        continue
+                    if regex.search(line):
+                        matches.append(
+                            GrepMatch(
+                                path=str(file_path),
+                                line_number=line_number,
+                                line=truncate_line(line, line_summary_length),
                             )
-                            if len(matches) >= max_results:
-                                truncated = True
-                                return matches, truncated
-            except OSError:
-                continue
+                        )
+                        if len(matches) >= max_results:
+                            truncated = True
+                            return matches, truncated
+        except OSError:
+            continue
 
     return matches, truncated

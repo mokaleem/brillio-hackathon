@@ -1,4 +1,4 @@
-"""Regression tests for issue #3265.
+"""Regression tests for issues #3265 and #3932.
 
 The non-streaming ``/wait`` endpoints used to ``await record.task`` with no
 disconnect handling and silently swallow ``CancelledError``.  When a long
@@ -10,16 +10,25 @@ The fix introduces ``wait_for_run_completion`` in ``app.gateway.services``:
 it subscribes to the stream bridge until ``END_SENTINEL``, polls
 ``request.is_disconnected()`` on every wake-up, and honours the record's
 ``on_disconnect`` mode by cancelling the background run on real client
-disconnect.
+disconnect. Store-only consumers wait for the bridge's real terminal marker
+instead of treating an ordinary durable terminal status as proof that all tail
+events have already been published. A durable ``orphan_recovered`` stop reason
+provides the narrow heartbeat fallback when the publisher is known to be gone.
 """
 
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
-from deerflow.runtime import RunManager, RunStatus
+import anyio
+import pytest
+from _router_auth_helpers import call_unwrapped
+
+from deerflow.runtime import ORPHAN_RECOVERY_STOP_REASON, CancelOutcome, RunManager, RunRecord, RunStatus
 from deerflow.runtime.runs.schemas import DisconnectMode
 from deerflow.runtime.stream_bridge.memory import MemoryStreamBridge
 
@@ -36,11 +45,96 @@ class _FakeRequest:
     """
 
     disconnect_after: int = 10**9  # effectively "never" by default
+    headers: dict[str, str] = field(default_factory=dict)
     _polls: int = 0
 
     async def is_disconnected(self) -> bool:
         self._polls += 1
         return self._polls > self.disconnect_after
+
+
+class _MissingStreamBridge:
+    """Bridge stub that can report no retained stream for terminal records."""
+
+    supports_cross_process = True
+
+    def __init__(self) -> None:
+        self.subscribed = False
+
+    async def publish(self, run_id, event, data):
+        return None
+
+    async def publish_end(self, run_id):
+        return None
+
+    async def stream_exists(self, run_id: str) -> bool:
+        return False
+
+    def subscribe(self, run_id, *, last_event_id=None, heartbeat_interval=15.0):
+        self.subscribed = True
+        raise AssertionError("terminal missing streams should end before subscribing")
+
+    async def cleanup(self, run_id, *, delay=0):
+        return None
+
+
+class _FastHeartbeatBridge(MemoryStreamBridge):
+    """Memory bridge with a short heartbeat for durable-status refresh tests."""
+
+    def subscribe(self, run_id, *, last_event_id=None, heartbeat_interval=15.0):
+        return super().subscribe(
+            run_id,
+            last_event_id=last_event_id,
+            heartbeat_interval=0.01,
+        )
+
+
+class _FailingBridge:
+    """Fails before yielding: the client remains connected."""
+
+    def subscribe(self, run_id, *, last_event_id=None, heartbeat_interval=15.0):
+        async def _gen():
+            raise RuntimeError("stream bridge unavailable")
+            yield
+
+        return _gen()
+
+
+class _BlockingBridge:
+    def __init__(self) -> None:
+        self.subscribed = asyncio.Event()
+
+    def subscribe(self, run_id, *, last_event_id=None, heartbeat_interval=15.0):
+        async def _gen():
+            self.subscribed.set()
+            await asyncio.Event().wait()
+            yield
+
+        return _gen()
+
+
+class _ExhaustedBridge:
+    def subscribe(self, run_id, *, last_event_id=None, heartbeat_interval=15.0):
+        async def _gen():
+            if False:
+                yield
+
+        return _gen()
+
+
+@dataclass
+class _CancelRecorder:
+    cancelled: list[str] = field(default_factory=list)
+
+    async def cancel(self, run_id: str, action: str = "interrupt") -> None:
+        self.cancelled.append(run_id)
+
+
+@dataclass
+class _DrainingCancelRecorder(_CancelRecorder):
+    async def cancel(self, run_id: str, action: str = "interrupt") -> None:
+        await asyncio.sleep(0)
+        self.cancelled.append(run_id)
 
 
 async def _create_running_record(mgr: RunManager, *, on_disconnect: DisconnectMode) -> Any:
@@ -82,6 +176,36 @@ class TestWaitForRunCompletion:
             )
             assert completed is True
             assert record.status == RunStatus.success
+
+        asyncio.run(run())
+
+    def test_gap_resumes_from_retained_tail_until_run_ends(self) -> None:
+        """The internal wait path may skip payloads but must still observe END."""
+        from app.gateway.services import wait_for_run_completion
+
+        async def run() -> None:
+            mgr = RunManager()
+            bridge = MemoryStreamBridge(queue_maxsize=2)
+            record = await _create_running_record(mgr, on_disconnect=DisconnectMode.cancel)
+            request = _FakeRequest()
+
+            async def overrun_then_finish() -> None:
+                await asyncio.sleep(0)
+                for step in range(4):
+                    await bridge.publish(record.run_id, "values", {"step": step})
+                await asyncio.sleep(0)
+                await mgr.set_status(record.run_id, RunStatus.success)
+                await bridge.publish_end(record.run_id)
+
+            asyncio.create_task(overrun_then_finish())
+            completed = await asyncio.wait_for(
+                wait_for_run_completion(bridge, record, request, mgr),
+                timeout=2.0,
+            )
+
+            assert completed is True
+            assert record.status == RunStatus.success
+            assert not record.abort_event.is_set()
 
         asyncio.run(run())
 
@@ -151,6 +275,108 @@ class TestWaitForRunCompletion:
 
         asyncio.run(run())
 
+    def test_bridge_failure_does_not_apply_disconnect_policy(self) -> None:
+        """A server-side subscription failure is not a client disconnect."""
+        from app.gateway.services import wait_for_run_completion
+
+        async def run() -> None:
+            record = RunRecord(
+                run_id="run-bridge-failure",
+                thread_id=THREAD_ID,
+                assistant_id=None,
+                status=RunStatus.running,
+                on_disconnect=DisconnectMode.cancel,
+            )
+            recorder = _CancelRecorder()
+
+            try:
+                await wait_for_run_completion(_FailingBridge(), record, _FakeRequest(), recorder)
+            except RuntimeError as exc:
+                assert str(exc) == "stream bridge unavailable"
+            else:
+                raise AssertionError("bridge failure must propagate")
+
+            assert recorder.cancelled == []
+
+        asyncio.run(run())
+
+    def test_request_task_cancellation_applies_disconnect_policy(self) -> None:
+        """Cancelling the hosting request task retains disconnect semantics."""
+        from app.gateway.services import wait_for_run_completion
+
+        async def run() -> None:
+            record = RunRecord(
+                run_id="run-request-cancelled",
+                thread_id=THREAD_ID,
+                assistant_id=None,
+                status=RunStatus.running,
+                on_disconnect=DisconnectMode.cancel,
+            )
+            bridge = _BlockingBridge()
+            recorder = _CancelRecorder()
+            wait_task = asyncio.create_task(wait_for_run_completion(bridge, record, _FakeRequest(), recorder))
+            await bridge.subscribed.wait()
+
+            wait_task.cancel()
+            try:
+                await wait_task
+            except asyncio.CancelledError:
+                pass
+            else:
+                raise AssertionError("cancelled request task must propagate cancellation")
+
+            assert recorder.cancelled == ["run-request-cancelled"]
+
+        asyncio.run(run())
+
+    def test_anyio_cancel_scope_drains_disconnect_policy(self) -> None:
+        """Level cancellation cannot interrupt the owned run-cancel operation."""
+        from app.gateway.services import wait_for_run_completion
+
+        async def run() -> None:
+            record = RunRecord(
+                run_id="run-request-cancelled",
+                thread_id=THREAD_ID,
+                assistant_id=None,
+                status=RunStatus.running,
+                on_disconnect=DisconnectMode.cancel,
+            )
+            bridge = _BlockingBridge()
+            recorder = _DrainingCancelRecorder()
+
+            with anyio.CancelScope() as scope:
+                scope.cancel()
+                await wait_for_run_completion(bridge, record, _FakeRequest(), recorder)
+
+            assert recorder.cancelled == ["run-request-cancelled"]
+
+        anyio.run(run)
+
+    def test_unexpected_subscription_exhaustion_does_not_cancel(self) -> None:
+        """A subscription ending without END is a server error, not disconnect."""
+        from app.gateway.services import wait_for_run_completion
+
+        async def run() -> None:
+            record = RunRecord(
+                run_id="run-bridge-exhausted",
+                thread_id=THREAD_ID,
+                assistant_id=None,
+                status=RunStatus.running,
+                on_disconnect=DisconnectMode.cancel,
+            )
+            recorder = _CancelRecorder()
+
+            try:
+                await wait_for_run_completion(_ExhaustedBridge(), record, _FakeRequest(), recorder)
+            except RuntimeError as exc:
+                assert str(exc) == "stream bridge subscription ended before a terminal event"
+            else:
+                raise AssertionError("unexpected bridge exhaustion must fail")
+
+            assert recorder.cancelled == []
+
+        asyncio.run(run())
+
     def test_no_cancel_when_run_already_finished(self) -> None:
         """If the run ended (END_SENTINEL) before disconnect is observed, the
         finally block must not call cancel — the run is already terminal."""
@@ -174,4 +400,272 @@ class TestWaitForRunCompletion:
             assert completed is True
             assert record.status == RunStatus.success
 
+        asyncio.run(run())
+
+    def test_terminal_missing_stream_returns_complete(self) -> None:
+        """A known-terminal run with cleaned-up stream should not wait forever."""
+        from app.gateway.services import wait_for_run_completion
+
+        async def run() -> None:
+            mgr = RunManager()
+            bridge = _MissingStreamBridge()
+            record = RunRecord(
+                run_id="terminal-missing-run",
+                thread_id=THREAD_ID,
+                assistant_id=None,
+                status=RunStatus.success,
+                on_disconnect=DisconnectMode.cancel,
+                store_only=True,
+            )
+            request = _FakeRequest()
+
+            completed = await wait_for_run_completion(bridge, record, request, mgr)
+
+            assert completed is True
+            assert bridge.subscribed is False
+
+        asyncio.run(run())
+
+    def test_sse_consumer_terminal_missing_stream_yields_end(self) -> None:
+        """Joining a terminal store-only run with no stream should emit a terminal SSE."""
+        from app.gateway.services import sse_consumer
+
+        async def run() -> None:
+            mgr = RunManager()
+            bridge = _MissingStreamBridge()
+            record = RunRecord(
+                run_id="terminal-missing-run",
+                thread_id=THREAD_ID,
+                assistant_id=None,
+                status=RunStatus.success,
+                on_disconnect=DisconnectMode.cancel,
+                store_only=True,
+            )
+            request = _FakeRequest()
+
+            frames = [frame async for frame in sse_consumer(bridge, record, request, mgr)]
+
+            assert frames == ["event: end\ndata: null\n\n"]
+            assert bridge.subscribed is False
+
+        asyncio.run(run())
+
+    def test_sse_consumer_preserves_tail_events_after_durable_terminal_status(self) -> None:
+        """A durable terminal row must not overtake delayed error and END events."""
+        from app.gateway.services import sse_consumer
+        from deerflow.runtime.runs.store.memory import MemoryRunStore
+
+        async def run() -> None:
+            store = MemoryRunStore()
+            await store.put(
+                "periodic-orphan",
+                thread_id=THREAD_ID,
+                status="running",
+            )
+            mgr = RunManager(store=store)
+            record = await mgr.get("periodic-orphan")
+            assert record is not None
+            assert record.store_only is True
+            bridge = _FastHeartbeatBridge()
+            await bridge.publish(record.run_id, "values", {"step": 1})
+            request = _FakeRequest()
+            consumer = sse_consumer(bridge, record, request, mgr)
+
+            first_frame = await anext(consumer)
+            assert first_frame.startswith("event: values\n")
+
+            await store.update_status(record.run_id, "error", error="lease expired")
+
+            async def publish_tail() -> None:
+                await asyncio.sleep(0.05)
+                await bridge.publish(record.run_id, "error", {"message": "late error"})
+                await bridge.publish_end(record.run_id)
+
+            publisher = asyncio.create_task(publish_tail())
+            tail_frames = [frame async for frame in consumer]
+            await publisher
+
+            error_index = next(index for index, frame in enumerate(tail_frames) if frame.startswith("event: error\n"))
+            end_index = next(index for index, frame in enumerate(tail_frames) if frame.startswith("event: end\n"))
+            assert error_index < end_index
+            assert record.status == RunStatus.running
+
+        asyncio.run(run())
+
+    def test_wait_preserves_tail_events_after_durable_terminal_status(self) -> None:
+        """The wait path must remain blocked until the real END is published."""
+        from app.gateway.services import wait_for_run_completion
+        from deerflow.runtime.runs.store.memory import MemoryRunStore
+
+        async def run() -> None:
+            store = MemoryRunStore()
+            await store.put(
+                "periodic-orphan",
+                thread_id=THREAD_ID,
+                status="running",
+            )
+            mgr = RunManager(store=store)
+            record = await mgr.get("periodic-orphan")
+            assert record is not None
+            assert record.store_only is True
+            bridge = _FastHeartbeatBridge()
+            await bridge.publish(record.run_id, "values", {"step": 1})
+            await store.update_status(record.run_id, "error", error="lease expired")
+
+            wait_task = asyncio.create_task(wait_for_run_completion(bridge, record, _FakeRequest(), mgr))
+            await asyncio.sleep(0.05)
+            assert wait_task.done() is False
+
+            await bridge.publish(record.run_id, "error", {"message": "late error"})
+            await asyncio.sleep(0)
+            assert wait_task.done() is False
+
+            await bridge.publish_end(record.run_id)
+            completed = await asyncio.wait_for(wait_task, timeout=1.0)
+
+            assert completed is True
+            assert record.status == RunStatus.running
+
+        asyncio.run(run())
+
+    def test_sse_consumer_uses_explicit_orphan_recovery_liveness_boundary(
+        self,
+    ) -> None:
+        """A recovered orphan may synthesize END when its publisher is gone."""
+        from app.gateway.services import sse_consumer
+        from deerflow.runtime.runs.store.memory import MemoryRunStore
+
+        async def run() -> None:
+            store = MemoryRunStore()
+            await store.put(
+                "periodic-orphan",
+                thread_id=THREAD_ID,
+                status="running",
+            )
+            mgr = RunManager(store=store)
+            record = await mgr.get("periodic-orphan")
+            assert record is not None
+            bridge = _FastHeartbeatBridge()
+            await bridge.publish(record.run_id, "values", {"step": 1})
+            consumer = sse_consumer(bridge, record, _FakeRequest(), mgr)
+            assert (await anext(consumer)).startswith("event: values\n")
+
+            await store.update_status(
+                record.run_id,
+                "error",
+                error="lease expired",
+                stop_reason=ORPHAN_RECOVERY_STOP_REASON,
+            )
+
+            end_frame = await asyncio.wait_for(anext(consumer), timeout=1.0)
+            assert end_frame == "event: end\ndata: null\n\n"
+
+        asyncio.run(run())
+
+    def test_wait_uses_explicit_orphan_recovery_liveness_boundary(self) -> None:
+        """The non-streaming consumer shares the recovered-orphan boundary."""
+        from app.gateway.services import wait_for_run_completion
+        from deerflow.runtime.runs.store.memory import MemoryRunStore
+
+        async def run() -> None:
+            store = MemoryRunStore()
+            await store.put(
+                "periodic-orphan",
+                thread_id=THREAD_ID,
+                status="running",
+            )
+            mgr = RunManager(store=store)
+            record = await mgr.get("periodic-orphan")
+            assert record is not None
+            bridge = _FastHeartbeatBridge()
+            await bridge.publish(record.run_id, "values", {"step": 1})
+            await store.update_status(
+                record.run_id,
+                "error",
+                error="lease expired",
+                stop_reason=ORPHAN_RECOVERY_STOP_REASON,
+            )
+
+            completed = await asyncio.wait_for(
+                wait_for_run_completion(bridge, record, _FakeRequest(), mgr),
+                timeout=1.0,
+            )
+
+            assert completed is True
+
+        asyncio.run(run())
+
+
+@pytest.mark.parametrize("route_name", ["stateless_wait", "thread_wait", "cancel_wait", "cancel_stream_wait"])
+def test_wait_routes_propagate_bridge_failures(route_name: str) -> None:
+    """Every wait caller must preserve infrastructure failures as errors."""
+    from app.gateway.routers import runs, thread_runs
+
+    error = RuntimeError("stream bridge unavailable")
+    request = SimpleNamespace()
+    body = thread_runs.RunCreateRequest(config={"configurable": {"thread_id": THREAD_ID}})
+    record = SimpleNamespace(
+        run_id="run-route-bridge-failure",
+        thread_id=THREAD_ID,
+        task=object(),
+        store_only=False,
+        status=RunStatus.running,
+        error=None,
+        idempotency_reused=False,
+    )
+    bridge = SimpleNamespace(supports_cross_process=True)
+    manager = SimpleNamespace(
+        get=AsyncMock(return_value=record),
+        cancel=AsyncMock(return_value=CancelOutcome.requested),
+    )
+
+    async def run() -> None:
+        if route_name == "stateless_wait":
+            with (
+                patch.object(runs, "get_stream_bridge", return_value=bridge),
+                patch.object(runs, "get_run_manager", return_value=manager),
+                patch.object(runs, "start_run", AsyncMock(return_value=record)),
+                patch.object(runs, "wait_for_run_completion", AsyncMock(side_effect=error)),
+            ):
+                await call_unwrapped(runs.stateless_wait, body, request)
+            return
+
+        if route_name == "thread_wait":
+            with (
+                patch.object(thread_runs, "get_stream_bridge", return_value=bridge),
+                patch.object(thread_runs, "get_run_manager", return_value=manager),
+                patch.object(thread_runs, "start_run", AsyncMock(return_value=record)),
+                patch.object(thread_runs, "wait_for_run_completion", AsyncMock(side_effect=error)),
+            ):
+                await call_unwrapped(thread_runs.wait_run, THREAD_ID, body, request)
+            return
+
+        record.task = None
+        record.store_only = True
+        with (
+            patch.object(thread_runs, "_require_run_visible_to_scope", AsyncMock()),
+            patch.object(thread_runs, "get_stream_bridge", return_value=bridge),
+            patch.object(thread_runs, "get_run_manager", return_value=manager),
+            patch.object(thread_runs, "require_cancel_permission_when_action"),
+            patch.object(thread_runs, "wait_for_run_completion", AsyncMock(side_effect=error)),
+        ):
+            if route_name == "cancel_wait":
+                await call_unwrapped(
+                    thread_runs.cancel_run,
+                    THREAD_ID,
+                    record.run_id,
+                    request,
+                    wait=True,
+                    action="interrupt",
+                )
+            else:
+                await thread_runs._stream_existing_run(
+                    THREAD_ID,
+                    record.run_id,
+                    request,
+                    action="interrupt",
+                    wait=1,
+                )
+
+    with pytest.raises(RuntimeError, match="stream bridge unavailable"):
         asyncio.run(run())

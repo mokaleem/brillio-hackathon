@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 
 @dataclass
@@ -26,6 +26,9 @@ class LLMProvider:
     auth_hint: str | None = None
     base_url_prompt: str | None = None
     model_prompt: str | None = None
+    # For generic OpenAI-compatible gateways the wizard cannot infer whether the
+    # user-supplied model supports thinking/reasoning, so prompt for it explicitly.
+    ask_thinking_support: bool = False
 
     def extra_config_for(self, model_name: str) -> dict:
         """Return extra_config for a selected model, applying per-model overrides.
@@ -94,6 +97,22 @@ ANTHROPIC_THINKING_CONFIG = {
 }
 
 
+def with_thinking_support(provider: LLMProvider, supports_thinking: bool) -> LLMProvider:
+    """Return a copy of *provider* with thinking-capability flags applied.
+
+    For generic OpenAI-compatible gateways the wizard cannot infer whether the
+    user-supplied model supports thinking/reasoning. When the user confirms
+    support we also wire the common OpenAI-compatible enable/disable toggles so
+    the runtime can switch thinking on and off; otherwise we record the
+    capability as unsupported. The shared provider definition is never mutated.
+    """
+    if supports_thinking:
+        extra_config = {**provider.extra_config, **OPENAI_COMPAT_THINKING_CONFIG}
+    else:
+        extra_config = {**provider.extra_config, "supports_thinking": False}
+    return replace(provider, extra_config=extra_config)
+
+
 LLM_PROVIDERS: list[LLMProvider] = [
     LLMProvider(
         name="volcengine",
@@ -111,6 +130,93 @@ LLM_PROVIDERS: list[LLMProvider] = [
             "supports_vision": True,
             "supports_reasoning_effort": True,
             **OPENAI_COMPAT_THINKING_CONFIG,
+        },
+    ),
+    LLMProvider(
+        name="volcengine_codingplan",
+        display_name="Volcengine Coding Plan",
+        description="One key, multi-vendor models (Doubao/GLM/DeepSeek/Kimi/MiniMax)",
+        use="deerflow.models.patched_deepseek:PatchedChatDeepSeek",
+        models=[
+            "doubao-seed-2.0-code",
+            "doubao-seed-2.0-pro",
+            "doubao-seed-2.0-lite",
+            "doubao-seed-code",
+            "minimax-m2.7",
+            "minimax-m3",
+            "glm-5.2",
+            "deepseek-v4-flash",
+            "deepseek-v4-pro",
+            "kimi-k2.6",
+            "kimi-k2.7-code",
+        ],
+        default_model="glm-5.2",
+        env_var="VOLCENGINE_API_KEY",
+        package="langchain-deepseek",
+        extra_config={
+            "api_base": "https://ark.cn-beijing.volces.com/api/coding/v3",
+            "timeout": 600.0,
+            "max_retries": 2,
+            "supports_vision": True,
+            "supports_reasoning_effort": True,
+            **OPENAI_COMPAT_THINKING_CONFIG,
+        },
+        model_vision_overrides={
+            "doubao-seed-2.0-code": True,
+            "doubao-seed-2.0-pro": True,
+            "doubao-seed-2.0-lite": True,
+            "doubao-seed-code": True,
+            "minimax-m2.7": False,
+            "minimax-m3": True,
+            "glm-5.2": False,
+            "deepseek-v4-flash": False,
+            "deepseek-v4-pro": False,
+            "kimi-k2.6": False,
+            "kimi-k2.7-code": False,
+        },
+    ),
+    LLMProvider(
+        name="zai",
+        display_name="Z.AI GLM-5.3-Flash",
+        description="GLM-5.3-Flash with required thinking, low/high/max effort, and native vision",
+        use="deerflow.models.patched_deepseek:PatchedChatDeepSeek",
+        models=["glm-5.3-flash"],
+        default_model="glm-5.3-flash",
+        env_var="ZAI_API_KEY",
+        package="langchain-deepseek",
+        extra_config={
+            "api_base": "https://api.z.ai/api/paas/v4",
+            "timeout": 600.0,
+            "max_retries": 2,
+            "temperature": 1.0,
+            "top_p": 0.95,
+            "max_tokens": 131072,
+            "context_window": 1000000,
+            "supports_vision": True,
+            # Declarative reasoning contract (issue #5073). GLM-5.3-Flash cannot
+            # disable thinking and only accepts low/high/max effort, so the
+            # contract keeps thinking on for every foreground and background
+            # call, maps DeerFlow's generic minimal/medium presets onto the
+            # provider vocabulary, and serializes clear_thinking=true so the
+            # model does not require exact reasoning replay after summarization.
+            # `default` also governs callers that never choose an effort
+            # (summarization, title generation, subagents), so it stays at
+            # `high` rather than the provider's deepest `max`; `max` remains
+            # selectable in the composer.
+            "reasoning": {
+                "thinking": "required",
+                "dialect": "openai_extra_body",
+                "history": "clear",
+                "effort": {
+                    "values": ["low", "high", "max"],
+                    "default": "high",
+                    "aliases": {"minimal": "low", "medium": "high"},
+                },
+            },
+            "extra_body": {"tool_stream": True},
+            # Z.AI streams terminal usage without requiring OpenAI's undocumented
+            # stream_options.include_usage request field.
+            "stream_usage": False,
         },
     ),
     LLMProvider(
@@ -167,10 +273,10 @@ LLM_PROVIDERS: list[LLMProvider] = [
     LLMProvider(
         name="deepseek",
         display_name="DeepSeek",
-        description="DeepSeek Reasoner with thinking support",
+        description="DeepSeek V4 with thinking support",
         use="deerflow.models.patched_deepseek:PatchedChatDeepSeek",
-        models=["deepseek-reasoner", "deepseek-chat"],
-        default_model="deepseek-reasoner",
+        models=["deepseek-v4-pro", "deepseek-v4-flash"],
+        default_model="deepseek-v4-pro",
         env_var="DEEPSEEK_API_KEY",
         package="langchain-deepseek",
         extra_config={
@@ -373,6 +479,23 @@ LLM_PROVIDERS: list[LLMProvider] = [
         },
     ),
     LLMProvider(
+        name="orcarouter",
+        display_name="OrcaRouter",
+        description="OpenAI-compatible adaptive routing gateway",
+        use="langchain_openai:ChatOpenAI",
+        models=["openai/gpt-5.5", "anthropic/claude-opus-4.8", "google/gemini-3.5-flash", "orcarouter/auto"],
+        default_model="openai/gpt-5.5",
+        env_var="ORCAROUTER_API_KEY",
+        package="langchain-openai",
+        extra_config={
+            "base_url": "https://api.orcarouter.ai/v1",
+            "request_timeout": 600.0,
+            "max_retries": 2,
+            "max_tokens": 8192,
+            "temperature": 0.7,
+        },
+    ),
+    LLMProvider(
         name="vllm",
         display_name="vLLM",
         description="Self-hosted OpenAI-compatible serving",
@@ -462,6 +585,7 @@ LLM_PROVIDERS: list[LLMProvider] = [
         package="langchain-openai",
         base_url_prompt="Base URL (e.g. https://api.openai.com/v1)",
         model_prompt="Model name",
+        ask_thinking_support=True,
     ),
 ]
 
@@ -527,6 +651,22 @@ SEARCH_PROVIDERS: list[SearchProvider] = [
         extra_config={"max_results": 5},
     ),
     SearchProvider(
+        name="serply",
+        display_name="Serply",
+        description="Google Search, News and Scholar results, API key required",
+        use="deerflow.community.serply.tools:web_search_tool",
+        env_var="SERPLY_API_KEY",
+        extra_config={"max_results": 5},
+    ),
+    SearchProvider(
+        name="sofya",
+        display_name="Sofya",
+        description="Search results include page content, API key required",
+        use="deerflow.community.sofya.tools:web_search_tool",
+        env_var="SOFYA_API_KEY",
+        extra_config={"max_results": 5, "contents_max_characters": 2000},
+    ),
+    SearchProvider(
         name="groundroute",
         display_name="GroundRoute",
         description="One key across six engines, price-routed with failover, API key required",
@@ -586,5 +726,30 @@ WEB_FETCH_PROVIDERS: list[WebProvider] = [
         use="deerflow.community.fastcrw.tools:web_fetch_tool",
         env_var="CRW_API_KEY",
         tool_name="web_fetch",
+    ),
+    WebProvider(
+        name="sofya",
+        display_name="Sofya",
+        description="Page as markdown, API key required",
+        use="deerflow.community.sofya.tools:web_fetch_tool",
+        env_var="SOFYA_API_KEY",
+        tool_name="web_fetch",
+    ),
+    WebProvider(
+        name="unbrowse",
+        display_name="Unbrowse",
+        description="Page as markdown, cloud browser for JavaScript pages, API key required",
+        use="deerflow.community.unbrowse.tools:web_fetch_tool",
+        env_var="UNBROWSE_API_KEY",
+        tool_name="web_fetch",
+    ),
+    WebProvider(
+        name="crawl4ai",
+        display_name="Crawl4AI",
+        description="Self-hosted headless Chromium with markdown output, no API key required",
+        use="deerflow.community.crawl4ai.tools:web_fetch_tool",
+        env_var=None,
+        tool_name="web_fetch",
+        extra_config={"base_url": "http://localhost:11235", "timeout": 30},
     ),
 ]

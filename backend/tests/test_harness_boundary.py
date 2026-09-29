@@ -111,15 +111,20 @@ def test_harness_public_api_exports_stable_sdk_surface():
 def test_harness_wheel_installs_and_imports_public_sdk(tmp_path: Path):
     dist_dir = tmp_path / "dist"
     _run(["uv", "build", "packages/harness", "--wheel", "--out-dir", str(dist_dir)], cwd=BACKEND_ROOT)
+    # The harness pins the workspace-only deerflow-extension-api contract package,
+    # which is not published to PyPI, so it must be installed from its own wheel.
+    _run(["uv", "build", "packages/extension-api", "--wheel", "--out-dir", str(dist_dir)], cwd=BACKEND_ROOT)
 
     wheels = sorted(dist_dir.glob("deerflow_harness-*.whl"))
     assert len(wheels) == 1
+    contract_wheels = sorted(dist_dir.glob("deerflow_extension_api-*.whl"))
+    assert len(contract_wheels) == 1
 
     venv_dir = tmp_path / "sdk-venv"
     venv.EnvBuilder(with_pip=True, system_site_packages=True).create(venv_dir)
     python = _venv_python(venv_dir)
 
-    _run(["uv", "pip", "install", "--python", str(python), str(wheels[0])], cwd=tmp_path)
+    _run(["uv", "pip", "install", "--python", str(python), str(wheels[0]), str(contract_wheels[0])], cwd=tmp_path)
 
     smoke = """
 from pathlib import Path

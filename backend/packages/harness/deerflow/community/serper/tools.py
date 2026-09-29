@@ -40,7 +40,7 @@ def _coerce_max_results(value: object, default: int = 5, max_allowed: int = _SER
     """Coerce config/parameter input into a bounded positive result count."""
     try:
         count = int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return default
     if count <= 0:
         return default
@@ -149,7 +149,10 @@ def _safe_public_url(value: object) -> str:
     if not isinstance(value, str):
         return ""
     url = value.strip()
-    parsed = urlparse(url)
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return ""
     if parsed.scheme not in {"http", "https"} or not parsed.netloc or not parsed.hostname:
         return ""
 

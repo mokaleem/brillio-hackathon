@@ -87,6 +87,6 @@ def test_demo_registry_reporting_tools_load_into_orchestration(mock_bash, monkey
     config.acp_agents = {}
 
     with patch("deerflow.tools.tools.BUILTIN_TOOLS", []):
-        tools = get_available_tools(groups=["reporting"], include_mcp=False, app_config=config)
+        tools = get_available_tools(groups=["reporting"], include_mcp=False, include_upload_tool=False, app_config=config)
 
     assert [tool.name for tool in tools] == ["html_report", "csv_export", "pdf_report"]

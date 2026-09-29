@@ -1,6 +1,6 @@
 """Core behavior tests for MCP client server config building."""
 
-import os
+import logging
 from pathlib import Path
 
 import pytest
@@ -24,6 +24,17 @@ def test_build_server_params_stdio_success():
         "command": "npx",
         "args": ["-y", "my-mcp-server"],
         "env": {"API_KEY": "secret"},
+    }
+
+
+@pytest.mark.parametrize("cwd", [None, ""], ids=["null", "empty"])
+def test_build_server_params_omits_empty_stdio_cwd(cwd: str | None):
+    config = McpServerConfig(command="python", args=["server.py"], cwd=cwd)
+
+    assert build_server_params("local", config) == {
+        "transport": "stdio",
+        "command": "python",
+        "args": ["server.py"],
     }
 
 
@@ -186,22 +197,42 @@ def test_build_servers_config_includes_registry_mcp_servers(monkeypatch, tmp_pat
     }
 
 
-def test_mcp_cache_config_signature_tracks_registry_manifests(monkeypatch, tmp_path: Path):
+def test_mcp_cache_registry_signature_tracks_manifest_content(monkeypatch, tmp_path: Path):
+    """Fork: internal-registry manifests are part of the MCP cache's staleness inputs."""
     from deerflow.mcp import cache
 
-    config_path = tmp_path / "extensions_config.json"
-    config_path.write_text('{"mcpServers": {}, "skills": {}}', encoding="utf-8")
     manifest_path = tmp_path / "registry.json"
     manifest_path.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
-    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(config_path))
     monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
 
-    first = cache._get_config_signature()
-    os.utime(manifest_path, (manifest_path.stat().st_atime, manifest_path.stat().st_mtime + 10))
-    second = cache._get_config_signature()
+    first = cache._current_registry_manifest_signature()
+    manifest_path.write_text('{"version": 1, "extensions": [], "metadata": {"edited": true}}', encoding="utf-8")
+    second = cache._current_registry_manifest_signature()
 
     assert first != second
-    assert str(manifest_path) in {path for path, _mtime in second}
+    assert str(manifest_path.resolve()) in {path for path, _signature in second}
+
+
+def test_mcp_cache_is_stale_when_registry_manifest_changes(monkeypatch, tmp_path: Path):
+    """Fork: editing a registry manifest invalidates an initialized MCP cache even
+    when extensions_config.json itself is unchanged."""
+    from deerflow.mcp import cache
+
+    manifest_path = tmp_path / "registry.json"
+    manifest_path.write_text('{"version": 1, "extensions": []}', encoding="utf-8")
+    monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
+
+    monkeypatch.setattr(cache, "_cache_initialized", True)
+    monkeypatch.setattr(cache, "_registry_manifest_signature", cache._current_registry_manifest_signature())
+    monkeypatch.setattr(cache, "_config_signature", None)
+    monkeypatch.setattr(cache, "_initialized_without_config", False)
+    monkeypatch.setattr(cache, "_current_config_state", lambda: (None, None))
+
+    assert cache._is_cache_stale() is False
+
+    manifest_path.write_text('{"version": 1, "extensions": [], "metadata": {"edited": true}}', encoding="utf-8")
+
+    assert cache._is_cache_stale() is True
 
 
 def test_build_server_params_stdio_requires_command():
@@ -229,6 +260,16 @@ def test_build_server_params_http_like_success(transport: str):
 
 
 @pytest.mark.parametrize("transport", ["sse", "http"])
+def test_build_server_params_does_not_forward_stdio_cwd_to_remote_transports(transport: str):
+    config = McpServerConfig(type=transport, url="https://example.com/mcp", cwd="/local/server")
+
+    assert build_server_params("remote-server", config) == {
+        "transport": transport,
+        "url": "https://example.com/mcp",
+    }
+
+
+@pytest.mark.parametrize("transport", ["sse", "http"])
 def test_build_server_params_http_like_requires_url(transport: str):
     config = McpServerConfig(type=transport, url=None)
 
@@ -241,6 +282,63 @@ def test_build_server_params_rejects_unsupported_transport():
 
     with pytest.raises(ValueError, match="unsupported transport type"):
         build_server_params("bad-transport", config)
+
+
+@pytest.mark.parametrize(
+    ("value", "reason"),
+    [
+        ("Bearer static-secret-123\n", "line break"),
+        ("Bearer static-secret-caf\u00e9", "outside ASCII"),
+        ("Bearer static-secret-456 ", "whitespace"),
+    ],
+    ids=["trailing-newline", "non-ascii", "trailing-space"],
+)
+def test_build_server_params_rejects_illegal_header_value(value: str, reason: str):
+    """A statically configured value the transport would refuse is denied here.
+
+    h11 renders the full value into its exception message on a line break or
+    surrounding whitespace, which ToolErrorHandlingMiddleware turns into a
+    model-visible ToolMessage. These values are API keys often enough that the
+    denial names the header and the reason instead.
+    """
+    config = McpServerConfig(type="http", url="https://example.com/mcp", headers={"Authorization": value})
+
+    with pytest.raises(ValueError) as excinfo:
+        build_server_params("remote-server", config)
+
+    message = str(excinfo.value)
+    assert reason in message
+    assert "static-secret" not in message
+    assert "Authorization" in message
+
+
+def test_build_servers_config_drops_only_the_server_with_an_illegal_header(caplog):
+    config = ExtensionsConfig.model_validate(
+        {
+            "mcpServers": {
+                "broken": {
+                    "enabled": True,
+                    "type": "http",
+                    "url": "https://example.com/mcp",
+                    "headers": {"Authorization": "Bearer static-secret-123\n"},
+                },
+                "healthy": {
+                    "enabled": True,
+                    "type": "http",
+                    "url": "https://example.com/mcp",
+                    "headers": {"Authorization": "Bearer fine"},
+                },
+            }
+        }
+    )
+
+    with caplog.at_level(logging.ERROR, logger="deerflow.mcp.client"):
+        servers_config = build_servers_config(config)
+
+    # One bad server does not take the others down with it, and the log that
+    # explains the drop does not carry the value either.
+    assert set(servers_config) == {"healthy"}
+    assert "static-secret" not in caplog.text
 
 
 @pytest.mark.parametrize("transport", ["sse", "http"])
@@ -306,3 +404,52 @@ def test_build_servers_config_skips_invalid_server_and_keeps_valid_ones():
     assert result["valid-stdio"]["transport"] == "stdio"
     assert "invalid-stdio" not in result
     assert "disabled-http" not in result
+
+
+def test_build_server_params_excludes_tool_call_timeout():
+    """tool_call_timeout must NOT appear in the connection dict.
+
+    langchain-mcp-adapters passes the connection dict to create_session(),
+    which forwards unknown keys to _create_stdio_session(), causing TypeError.
+    The timeout is read from McpServerConfig at the tool wrapper call-site
+    instead.  Regression for PR #3843 P1 bug.
+    """
+    config = McpServerConfig(
+        type="stdio",
+        command="npx",
+        args=["-y", "my-mcp-server"],
+        tool_call_timeout=30.0,
+    )
+
+    params = build_server_params("my-server", config)
+
+    assert "tool_call_timeout" not in params
+    assert params == {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "my-mcp-server"],
+    }
+
+
+def test_parallel_search_example_is_explicitly_opt_in_and_uses_anonymous_http_transport():
+    """The shipped example must not enable or authenticate the optional free server."""
+    import json
+    from pathlib import Path
+
+    example = json.loads((Path(__file__).parents[2] / "extensions_config.example.json").read_text())
+    parallel = example["mcpServers"]["parallel-search"]
+
+    assert parallel["enabled"] is False
+    assert parallel["type"] == "http"
+    assert parallel["url"] == "https://search.parallel.ai/mcp"
+    assert parallel["headers"] == {"User-Agent": "deer-flow"}
+
+    config = ExtensionsConfig.model_validate(example)
+    assert "parallel-search" not in build_servers_config(config)
+
+    config.mcp_servers["parallel-search"].enabled = True
+    assert build_servers_config(config)["parallel-search"] == {
+        "transport": "http",
+        "url": "https://search.parallel.ai/mcp",
+        "headers": {"User-Agent": "deer-flow"},
+    }

@@ -9,11 +9,14 @@ import {
 } from "@/core/artifacts/catalog";
 import { useI18n } from "@/core/i18n/hooks";
 
+import { useMaybeSidecar } from "../sidecar/context";
+
 import { useArtifacts } from "./context";
 
 export const ArtifactTrigger = () => {
   const { t } = useI18n();
   const { artifacts, setOpen: setArtifactsOpen } = useArtifacts();
+  const sidecar = useMaybeSidecar();
   const summary = useMemo(
     () => summarizeArtifactFiles(artifacts ?? []),
     [artifacts],
@@ -25,9 +28,12 @@ export const ArtifactTrigger = () => {
   return (
     <Tooltip content={formatArtifactSummary(summary)}>
       <Button
+        aria-label={t.common.showArtifacts}
         className="text-muted-foreground hover:text-foreground gap-1.5"
         variant="ghost"
+        data-testid="artifact-trigger"
         onClick={() => {
+          sidecar?.close();
           setArtifactsOpen(true);
         }}
       >
