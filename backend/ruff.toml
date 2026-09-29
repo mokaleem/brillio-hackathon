@@ -11,3 +11,6 @@ known-first-party = ["deerflow", "app"]
 [format]
 quote-style = "double"
 indent-style = "space"
+# ruff >=0.16 formats Python code blocks in Markdown by default; keep docs
+# snippets hand-formatted as before.
+exclude = ["*.md"]

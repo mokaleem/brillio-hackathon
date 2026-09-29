@@ -47,6 +47,10 @@ markers = [
 
 [tool.uv]
 index-url = "https://pypi.org/simple"
+# langgraph-sdk 0.4.x (pulled in by langgraph 1.2) pins websockets<16 without an
+# API reason; keep the 16.0 the IM channels already run on. Mirrors upstream
+# DeerFlow. Remove once langgraph-sdk relaxes the pin.
+override-dependencies = ["websockets==16.0"]
 
 [tool.uv.workspace]
 members = ["packages/harness"]
