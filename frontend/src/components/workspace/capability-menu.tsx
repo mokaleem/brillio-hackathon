@@ -33,18 +33,18 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { loadExtensions } from "@/core/extensions/api";
+import { loadExtensions } from "@/core/internal-registry/api";
 import {
   buildDemoConversationPrompt,
   buildExtensionPrompt,
   extensionDisplayName,
   formatExtensionKind,
   requiresCapabilityApproval,
-} from "@/core/extensions/browser";
+} from "@/core/internal-registry/browser";
 import type {
   ExtensionDescriptor,
   ExtensionKind,
-} from "@/core/extensions/types";
+} from "@/core/internal-registry/types";
 import { cn } from "@/lib/utils";
 
 const CHAT_CAPABILITIES_QUERY_KEY = [

@@ -49,7 +49,7 @@ Body:
 - `uv run ruff format --check .`
 - `uv run ruff check app\gateway\routers\audit.py app\gateway\routers\extensions.py app\gateway\app.py app\gateway\routers\__init__.py tests\test_audit_router.py tests\test_extensions_router.py`
 - `pnpm test tests/unit/core/audit/api.test.ts`
-- `pnpm test tests/unit/core/extensions/api.test.ts`
+- `pnpm test tests/unit/core/internal-registry/api.test.ts`
 - `pnpm typecheck`
 - `pnpm lint`
 - `pnpm test:e2e tests/e2e/hackathon-demo.spec.ts --project=chromium --reporter=list`

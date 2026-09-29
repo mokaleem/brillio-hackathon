@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, ValidationError
 from app.gateway import extension_registry
 from app.gateway.deps import require_admin_user
 from deerflow.audit import record_audit_event
-from deerflow.extensions import (
+from deerflow.internal_registry import (
     ExtensionApproval,
     ExtensionDescriptor,
     ExtensionKind,

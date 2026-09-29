@@ -51,7 +51,7 @@ class AgentConfig(BaseModel):
 
 def _get_registry_agent_descriptor(name: str):
     try:
-        from deerflow.extensions import ExtensionKind, load_runtime_extension_catalog
+        from deerflow.internal_registry import ExtensionKind, load_runtime_extension_catalog
 
         catalog = load_runtime_extension_catalog()
     except Exception:
@@ -85,7 +85,7 @@ def _load_registry_agent_config(name: str) -> AgentConfig | None:
     _catalog, extension = _get_registry_agent_descriptor(name)
     if extension is None:
         return None
-    from deerflow.extensions import ExtensionPermissionError, require_extension_runtime_permission
+    from deerflow.internal_registry import ExtensionPermissionError, require_extension_runtime_permission
 
     try:
         require_extension_runtime_permission(extension)
@@ -99,7 +99,7 @@ def _load_registry_agent_soul(name: str) -> str | None:
     catalog, extension = _get_registry_agent_descriptor(name)
     if extension is None:
         return None
-    from deerflow.extensions import ExtensionPermissionError, require_extension_runtime_permission
+    from deerflow.internal_registry import ExtensionPermissionError, require_extension_runtime_permission
 
     try:
         require_extension_runtime_permission(extension)
@@ -133,7 +133,7 @@ def _load_registry_agent_soul(name: str) -> str | None:
 
 def _list_registry_agent_configs() -> list[AgentConfig]:
     try:
-        from deerflow.extensions import ExtensionKind, load_runtime_extension_catalog
+        from deerflow.internal_registry import ExtensionKind, load_runtime_extension_catalog
 
         catalog = load_runtime_extension_catalog()
     except Exception:
@@ -141,7 +141,7 @@ def _list_registry_agent_configs() -> list[AgentConfig]:
         return []
     agents: list[AgentConfig] = []
     for extension in catalog.enabled(kind=ExtensionKind.AGENT):
-        from deerflow.extensions import ExtensionPermissionError, require_extension_runtime_permission
+        from deerflow.internal_registry import ExtensionPermissionError, require_extension_runtime_permission
 
         try:
             require_extension_runtime_permission(extension)

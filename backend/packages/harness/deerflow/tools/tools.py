@@ -4,7 +4,7 @@ from langchain.tools import BaseTool
 
 from deerflow.config import get_app_config
 from deerflow.config.app_config import AppConfig
-from deerflow.extensions import ExtensionDescriptor, ExtensionKind, ExtensionPermissionError, load_runtime_extension_catalog, materialize_tool
+from deerflow.internal_registry import ExtensionDescriptor, ExtensionKind, ExtensionPermissionError, load_runtime_extension_catalog, materialize_tool
 from deerflow.reflection import resolve_variable
 from deerflow.sandbox.security import is_host_bash_allowed
 from deerflow.tools.builtins import ask_clarification_tool, present_file_tool, task_tool, view_image_tool

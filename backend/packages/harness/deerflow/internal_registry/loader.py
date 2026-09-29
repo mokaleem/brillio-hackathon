@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from deerflow.extensions.descriptors import ExtensionDescriptor, ExtensionKind, ExtensionManifest
-from deerflow.extensions.manifest import load_extension_manifest
+from deerflow.internal_registry.descriptors import ExtensionDescriptor, ExtensionKind, ExtensionManifest
+from deerflow.internal_registry.manifest import load_extension_manifest
 
 
 @dataclass(frozen=True)

@@ -10,9 +10,9 @@ from langchain.tools import BaseTool
 from deerflow.audit import record_extension_execution
 from deerflow.config.extensions_config import McpServerConfig
 from deerflow.config.tool_config import ToolConfig
-from deerflow.extensions.descriptors import ExtensionDescriptor, ExtensionKind
-from deerflow.extensions.entrypoints import resolve_python_entrypoint
-from deerflow.extensions.policy import require_extension_runtime_permission
+from deerflow.internal_registry.descriptors import ExtensionDescriptor, ExtensionKind
+from deerflow.internal_registry.entrypoints import resolve_python_entrypoint
+from deerflow.internal_registry.policy import require_extension_runtime_permission
 from deerflow.reflection import resolve_variable
 
 

@@ -183,7 +183,7 @@ from deerflow.config import get_app_config
 
 ### Internal Extension Registry
 
-The hackathon extension layer lives in the harness package under `packages/harness/deerflow/extensions/` and remains importable without FastAPI. It provides:
+The hackathon extension layer lives in the harness package under `packages/harness/deerflow/internal_registry/` and remains importable without FastAPI. It provides:
 - `ExtensionManifest` / `ExtensionDescriptor` models for `agent`, `mcp`, `tool`, and `skill` descriptors.
 - `load_extension_manifest()` and `load_extension_catalog()` for side-effect-free manifest loading and duplicate detection.
 - `resolve_python_entrypoint()` / `execute_python_entrypoint()` for explicit `module:function` execution.

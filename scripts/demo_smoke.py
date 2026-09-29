@@ -17,7 +17,7 @@ for path in (str(REPO_ROOT), str(HARNESS_PATH)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from deerflow.extensions import (  # noqa: E402
+from deerflow.internal_registry import (  # noqa: E402
     ExtensionKind,
     load_extension_catalog,
     materialize_tool,

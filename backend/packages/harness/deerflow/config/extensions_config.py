@@ -178,7 +178,7 @@ class ExtensionsConfig(BaseModel):
         defaults without editing shared manifests.
         """
         try:
-            from deerflow.extensions import (
+            from deerflow.internal_registry import (
                 ExtensionKind,
                 load_runtime_extension_catalog,
                 materialize_mcp_server_config,

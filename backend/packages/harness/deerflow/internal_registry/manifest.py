@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from deerflow.extensions.descriptors import ExtensionManifest
+from deerflow.internal_registry.descriptors import ExtensionManifest
 
 
 def load_extension_manifest(path: Path | str) -> ExtensionManifest:

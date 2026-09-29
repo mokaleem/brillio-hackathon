@@ -54,7 +54,7 @@ import {
   removeImportedExtension,
   updateExtensionEnabled,
   validateExtensions,
-} from "@/core/extensions/api";
+} from "@/core/internal-registry/api";
 import {
   applyExtensionEnabledUpdate,
   filterExtensions,
@@ -65,14 +65,14 @@ import {
   summarizeExtensions,
   type ExtensionKindFilter,
   type ExtensionStatusFilter,
-} from "@/core/extensions/browser";
+} from "@/core/internal-registry/browser";
 import type {
   ExtensionDescriptor,
   ExtensionHealthResponse,
   ExtensionImportPreviewResponse,
   ExtensionKind,
   ExtensionsResponse,
-} from "@/core/extensions/types";
+} from "@/core/internal-registry/types";
 import { cn } from "@/lib/utils";
 
 const EXTENSION_QUERY_KEY = ["extensions", "catalog"] as const;
@@ -308,7 +308,9 @@ export function ExtensionBrowser() {
         health={healthQuery.data}
         records={auditRecords}
         isLoading={
-          extensionsQuery.isLoading || healthQuery.isLoading || auditQuery.isLoading
+          extensionsQuery.isLoading ||
+          healthQuery.isLoading ||
+          auditQuery.isLoading
         }
       />
 
@@ -338,7 +340,9 @@ export function ExtensionBrowser() {
       <ExecutionAuditPanel
         records={auditRecords}
         isLoading={auditQuery.isLoading}
-        error={auditQuery.error instanceof Error ? auditQuery.error.message : null}
+        error={
+          auditQuery.error instanceof Error ? auditQuery.error.message : null
+        }
         path={auditQuery.data?.path ?? ""}
         onRetry={() => void auditQuery.refetch()}
       />
@@ -441,9 +445,13 @@ function DemoObservabilityPanel({
   records: AuditExecutionRecord[];
   isLoading: boolean;
 }) {
-  const activeCount = extensions.filter((extension) => extension.enabled).length;
+  const activeCount = extensions.filter(
+    (extension) => extension.enabled,
+  ).length;
   const registryCount = extensions.filter(isExternalSource).length;
-  const failureCount = records.filter((record) => record.status === "error").length;
+  const failureCount = records.filter(
+    (record) => record.status === "error",
+  ).length;
   const artifactCount = new Set(records.flatMap((record) => record.artifacts))
     .size;
   const highRiskEnabled = extensions.filter(
@@ -581,7 +589,10 @@ function ExecutionAuditPanel({
       ) : (
         <ul className="grid gap-2 xl:grid-cols-2">
           {records.slice(0, 4).map((record) => (
-            <AuditRecordRow key={`${record.started_at}:${record.extension.name}`} record={record} />
+            <AuditRecordRow
+              key={`${record.started_at}:${record.extension.name}`}
+              record={record}
+            />
           ))}
         </ul>
       )}
@@ -603,9 +614,10 @@ function AuditRecordRow({ record }: { record: AuditExecutionRecord }) {
             <span>{record.extension.kind ?? "extension"}</span>
             {source && <span className="truncate">{source}</span>}
             <span>{formatAuditTime(record.started_at)}</span>
-            {record.duration_ms !== null && record.duration_ms !== undefined && (
-              <span>{record.duration_ms}ms</span>
-            )}
+            {record.duration_ms !== null &&
+              record.duration_ms !== undefined && (
+                <span>{record.duration_ms}ms</span>
+              )}
           </div>
         </div>
         <Badge variant={record.status === "error" ? "destructive" : "outline"}>
@@ -613,7 +625,11 @@ function AuditRecordRow({ record }: { record: AuditExecutionRecord }) {
         </Badge>
       </div>
       <div className="text-muted-foreground mt-2 flex flex-wrap gap-2 text-xs">
-        <RiskBadge riskLevel={record.extension.risk_level as ExtensionDescriptor["risk_level"]} />
+        <RiskBadge
+          riskLevel={
+            record.extension.risk_level as ExtensionDescriptor["risk_level"]
+          }
+        />
         <span>Input {formatSummary(record.input_summary)}</span>
         <span>Output {formatSummary(record.output_summary)}</span>
       </div>
