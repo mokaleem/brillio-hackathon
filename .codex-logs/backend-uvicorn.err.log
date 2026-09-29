@@ -1,0 +1,159 @@
+D:\apps\brillio-hackathon\backend\.venv\Lib\site-packages\langgraph\checkpoint\serde\encrypted.py:5: LangChainPendingDeprecationWarning: The default value of `allowed_objects` will change in a future version. Pass an explicit value (e.g., allowed_objects='messages' or allowed_objects='core') to suppress this warning.
+  from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+Failed to load enabled skills for prompt injection
+Traceback (most recent call last):
+  File "D:\apps\brillio-hackathon\backend\packages\harness\deerflow\agents\lead_agent\prompt.py", line 49, in _refresh_enabled_skills_cache_worker
+    skills = _load_enabled_skills_sync()
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\packages\harness\deerflow\agents\lead_agent\prompt.py", line 30, in _load_enabled_skills_sync
+    return list(get_or_new_skill_storage().load_skills(enabled_only=True))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\packages\harness\deerflow\skills\storage\__init__.py", line 67, in get_or_new_skill_storage
+    app_config_now = get_app_config()
+                     ^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\packages\harness\deerflow\config\app_config.py", line 514, in get_app_config
+    resolved_path = AppConfig.resolve_config_path()
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\packages\harness\deerflow\config\app_config.py", line 227, in resolve_config_path
+    raise FileNotFoundError("`config.yaml` file not found in the project root or legacy backend/repository root locations")
+FileNotFoundError: `config.yaml` file not found in the project root or legacy backend/repository root locations
+INFO:     Started server process [14444]
+INFO:     Waiting for application startup.
+2026-06-27 21:07:58 - app.gateway.app - ERROR - Failed to load configuration during gateway startup: `config.yaml` file not found in the project root or legacy backend/repository root locations
+Traceback (most recent call last):
+  File "D:\apps\brillio-hackathon\backend\app\gateway\app.py", line 175, in lifespan
+    startup_config = get_app_config()
+                     ^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\packages\harness\deerflow\config\app_config.py", line 514, in get_app_config
+    resolved_path = AppConfig.resolve_config_path()
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\packages\harness\deerflow\config\app_config.py", line 227, in resolve_config_path
+    raise FileNotFoundError("`config.yaml` file not found in the project root or legacy backend/repository root locations")
+FileNotFoundError: `config.yaml` file not found in the project root or legacy backend/repository root locations
+ERROR:    Traceback (most recent call last):
+  File "D:\apps\brillio-hackathon\backend\app\gateway\app.py", line 175, in lifespan
+    startup_config = get_app_config()
+                     ^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\packages\harness\deerflow\config\app_config.py", line 514, in get_app_config
+    resolved_path = AppConfig.resolve_config_path()
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\packages\harness\deerflow\config\app_config.py", line 227, in resolve_config_path
+    raise FileNotFoundError("`config.yaml` file not found in the project root or legacy backend/repository root locations")
+FileNotFoundError: `config.yaml` file not found in the project root or legacy backend/repository root locations
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\apps\brillio-hackathon\backend\.venv\Lib\site-packages\starlette\routing.py", line 638, in lifespan
+    async with self.lifespan_context(app) as maybe_state:
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\malacmo\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\.venv\Lib\site-packages\fastapi\routing.py", line 216, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\malacmo\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\.venv\Lib\site-packages\fastapi\routing.py", line 216, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\malacmo\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\.venv\Lib\site-packages\fastapi\routing.py", line 216, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\malacmo\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\.venv\Lib\site-packages\fastapi\routing.py", line 216, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\malacmo\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\.venv\Lib\site-packages\fastapi\routing.py", line 216, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\malacmo\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\.venv\Lib\site-packages\fastapi\routing.py", line 216, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\malacmo\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\.venv\Lib\site-packages\fastapi\routing.py", line 216, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\malacmo\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\.venv\Lib\site-packages\fastapi\routing.py", line 216, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\malacmo\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\.venv\Lib\site-packages\fastapi\routing.py", line 216, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\malacmo\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\.venv\Lib\site-packages\fastapi\routing.py", line 216, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\malacmo\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\.venv\Lib\site-packages\fastapi\routing.py", line 216, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\malacmo\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\.venv\Lib\site-packages\fastapi\routing.py", line 216, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\malacmo\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\.venv\Lib\site-packages\fastapi\routing.py", line 216, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\malacmo\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\.venv\Lib\site-packages\fastapi\routing.py", line 216, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\malacmo\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\.venv\Lib\site-packages\fastapi\routing.py", line 216, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\malacmo\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\.venv\Lib\site-packages\fastapi\routing.py", line 216, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\malacmo\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\.venv\Lib\site-packages\fastapi\routing.py", line 216, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\malacmo\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\apps\brillio-hackathon\backend\app\gateway\app.py", line 182, in lifespan
+    raise RuntimeError(error_msg) from e
+RuntimeError: Failed to load configuration during gateway startup: `config.yaml` file not found in the project root or legacy backend/repository root locations
+
+ERROR:    Application startup failed. Exiting.
