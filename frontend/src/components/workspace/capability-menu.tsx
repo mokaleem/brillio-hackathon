@@ -33,18 +33,18 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { loadExtensions } from "@/core/extensions/api";
+import { loadExtensions } from "@/core/internal-registry/api";
 import {
   buildDemoConversationPrompt,
   buildExtensionPrompt,
   extensionDisplayName,
   formatExtensionKind,
   requiresCapabilityApproval,
-} from "@/core/extensions/browser";
+} from "@/core/internal-registry/browser";
 import type {
   ExtensionDescriptor,
   ExtensionKind,
-} from "@/core/extensions/types";
+} from "@/core/internal-registry/types";
 import { cn } from "@/lib/utils";
 
 const CHAT_CAPABILITIES_QUERY_KEY = [
@@ -102,6 +102,12 @@ export function CapabilityMenu({
     0,
   );
 
+  // Nothing to offer: keep the composer toolbar identical to upstream's so it
+  // does not wrap (and stays the same height as the side-chat composer).
+  if (enabledCount === 0) {
+    return null;
+  }
+
   const insertCapability = (extension: ExtensionDescriptor) => {
     if (requiresCapabilityApproval(extension)) {
       setPendingApproval(extension);
@@ -122,11 +128,12 @@ export function CapabilityMenu({
     <>
       <PromptInputActionMenu>
         <PromptInputActionMenuTrigger
+          aria-label="Capabilities"
           className="max-w-36 gap-1! px-2!"
           disabled={disabled}
         >
           <PackageOpenIcon className="size-3" />
-          <span className="hidden truncate text-xs font-normal sm:inline">
+          <span className="hidden truncate text-xs font-normal xl:inline">
             Capabilities
           </span>
           {enabledCount > 0 && (

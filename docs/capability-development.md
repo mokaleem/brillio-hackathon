@@ -169,7 +169,7 @@ is intentionally gitignored.
 ```powershell
 python scripts\production_readiness.py
 cd backend
-uv run pytest tests/test_extensions_router.py tests/test_extension_registry.py -q
+uv run pytest tests/test_extensions_router.py tests/test_internal_registry.py -q
 cd ..
 python scripts\release_smoke.py --skip-e2e
 ```

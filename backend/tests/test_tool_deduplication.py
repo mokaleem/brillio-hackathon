@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 from langchain_core.tools import BaseTool, StructuredTool, tool
 from pydantic import BaseModel, Field
 
+from deerflow.mcp.tasks.runtime import set_mcp_task_submitter
 from deerflow.tools.tools import get_available_tools
 
 TESTS_DIR = Path(__file__).parent
@@ -179,7 +180,7 @@ def test_registry_tools_respect_group_filters(mock_bash, monkeypatch, tmp_path):
     monkeypatch.setenv("DEERFLOW_EXTENSION_MANIFESTS", str(manifest_path))
 
     with patch("deerflow.tools.tools.BUILTIN_TOOLS", []):
-        result = get_available_tools(groups=["exports"], include_mcp=False, app_config=_make_minimal_config([]))
+        result = get_available_tools(groups=["exports"], include_mcp=False, include_upload_tool=False, app_config=_make_minimal_config([]))
 
     assert [tool.name for tool in result] == ["company_export_tool"]
 
@@ -253,7 +254,7 @@ def test_high_risk_registry_tools_load_when_runtime_policy_allows_high(mock_bash
     monkeypatch.setenv("DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS", "low,medium,high")
 
     with patch("deerflow.tools.tools.BUILTIN_TOOLS", []):
-        result = get_available_tools(include_mcp=False, app_config=_make_minimal_config([]))
+        result = get_available_tools(include_mcp=False, include_upload_tool=False, app_config=_make_minimal_config([]))
 
     assert [tool.name for tool in result] == ["company_export_tool"]
     assert result[0].invoke({"name": "audit"}) == "export:audit"
@@ -362,3 +363,35 @@ def test_duplicate_triggers_warning(mock_bash, mock_cfg, caplog):
             get_available_tools(include_mcp=False)
 
     assert any("Duplicate tool name" in r.message for r in caplog.records), "Expected a duplicate-tool warning in log output"
+
+
+@patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+def test_background_task_tools_follow_started_runtime_not_hot_config(mock_bash):
+    config = _make_minimal_config([])
+    config.mcp_tasks.enabled = False
+    set_mcp_task_submitter(object())
+    try:
+        started_names = {
+            tool.name
+            for tool in get_available_tools(
+                include_mcp=False,
+                include_upload_tool=False,
+                app_config=config,
+            )
+        }
+    finally:
+        set_mcp_task_submitter(None)
+
+    config.mcp_tasks.enabled = True
+    stopped_names = {
+        tool.name
+        for tool in get_available_tools(
+            include_mcp=False,
+            include_upload_tool=False,
+            app_config=config,
+        )
+    }
+
+    assert {"list_background_tasks", "cancel_background_task"} <= started_names
+    assert "list_background_tasks" not in stopped_names
+    assert "cancel_background_task" not in stopped_names

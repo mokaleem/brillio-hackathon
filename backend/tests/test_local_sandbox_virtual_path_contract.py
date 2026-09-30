@@ -143,6 +143,58 @@ def test_execute_command_lists_aggregate_user_data_root(provider):
     assert "outputs" in output
 
 
+def test_list_dir_on_user_data_root_does_not_duplicate_subdir_mounts(provider):
+    """Regression: ``list_dir``'s virtual sub-directory overlay must not
+    double-list a mount that the underlying scan already found.
+
+    The overlay compared a bare child name (e.g. "workspace") against
+    ``existing_dirs``, which holds full container paths (e.g.
+    "/mnt/user-data/workspace") -- so the containment guard never matched and
+    each of workspace/uploads/outputs (real nested subdirectories the plain
+    scan already discovers) was appended a second time.
+    """
+    sandbox_id = provider.acquire("alpha")
+    sbx = provider.get(sandbox_id)
+    # Touch all three subdirs so they materialise on disk and are found by the
+    # underlying (non-overlay) directory scan.
+    sbx.write_file("/mnt/user-data/workspace/.keep", "")
+    sbx.write_file("/mnt/user-data/uploads/.keep", "")
+    sbx.write_file("/mnt/user-data/outputs/.keep", "")
+
+    entries = sbx.list_dir("/mnt/user-data")
+
+    for subdir in ("workspace", "uploads", "outputs"):
+        matches = [e for e in entries if e.rstrip("/") == f"/mnt/user-data/{subdir}"]
+        assert len(matches) == 1, f"{subdir} listed {len(matches)} time(s), expected exactly 1: {entries}"
+
+
+def test_list_dir_on_skills_root_lists_category_mounts(provider):
+    """Regression: with the default (non-policy-scoped) mount layout there is
+    no mapping for the aggregate ``/mnt/skills`` root itself — only the four
+    category mounts (public/custom/legacy/integrations), each pointing at its
+    own host directory. The root must still be listable: the virtual
+    sub-directory overlay in ``list_dir`` exists exactly so the agent can
+    discover the categories via ``ls /mnt/skills``, but the host ``list_dir``
+    on the unmapped root raised ``FileNotFoundError`` before the overlay ran.
+    """
+    sandbox_id = provider.acquire("alpha")
+    sbx = provider.get(sandbox_id)
+
+    # Pin the scenario: the default category layout, no aggregate root mapping.
+    mounted = {m.container_path for m in sbx.path_mappings}
+    assert "/mnt/skills" not in mounted
+    assert mounted >= {"/mnt/skills/public", "/mnt/skills/custom", "/mnt/skills/legacy", "/mnt/skills/integrations"}
+
+    entries = sbx.list_dir("/mnt/skills")
+
+    assert entries == [
+        "/mnt/skills/custom/",
+        "/mnt/skills/integrations/",
+        "/mnt/skills/legacy/",
+        "/mnt/skills/public/",
+    ]
+
+
 def test_update_file_with_virtual_path_for_remote_sync_scenario(provider):
     """This is the exact code path used by ``uploads.py:282`` and ``feishu.py:389``.
 

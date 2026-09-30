@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
+import re
 from typing import Any
 
 from markdown_to_mrkdwn import SlackMarkdownConverter
@@ -11,11 +13,40 @@ from markdown_to_mrkdwn import SlackMarkdownConverter
 from app.channels.base import Channel
 from app.channels.commands import is_known_channel_command
 from app.channels.connection_identity import attach_connection_identity
-from app.channels.message_bus import InboundMessageType, MessageBus, OutboundMessage, ResolvedAttachment
+from app.channels.message_bus import InboundMessageType, InboundReservation, MessageBus, OutboundMessage, ResolvedAttachment
 
 logger = logging.getLogger(__name__)
 
 _slack_md_converter = SlackMarkdownConverter()
+
+
+def _escape_slack_text(text: str) -> str:
+    """Escape Slack's reserved characters (``&``, ``<``, ``>``) in raw message text,
+    except a ``>`` at the very start of a line -- Slack's own blockquote marker.
+
+    Slack requires callers to replace these with their HTML entity equivalents
+    (``&amp;``, ``&lt;``, ``&gt;``) before sending message text -- an unescaped
+    ``<...>`` triggers Slack's own mention/link syntax (e.g. ``<@USERID>``,
+    ``<http://url|label>``). See:
+    https://api.slack.com/reference/surfaces/formatting#escaping
+
+    This MUST run before ``_slack_md_converter.convert()``, not after: the
+    converter emits its own mrkdwn link syntax (``<url|label>``) for real
+    markdown links, and that generated syntax must reach Slack unescaped.
+    Escaping the raw input first -- and leaving the converter's own output
+    alone -- satisfies both requirements. ``html.escape(..., quote=False)``
+    replaces ``&`` before ``<``/``>``, so the entities it introduces are never
+    re-escaped.
+
+    Only ``&`` and ``<`` neutralize Slack's ``<...>`` mention/link syntax; a
+    ``>`` is special to Slack only at the start of a line, where the mrkdwn
+    converter passes it through unchanged as a blockquote marker. Escaping
+    every ``>`` would turn a quoted line into visible ``&gt;`` text instead of
+    a rendered blockquote, so a line-leading ``>`` is restored to a literal
+    ``>`` after escaping; a ``>`` anywhere else in the text still escapes.
+    """
+    escaped = html.escape(text, quote=False)
+    return re.sub(r"(?m)^&gt;", ">", escaped)
 
 
 def _normalize_allowed_users(allowed_users: Any) -> set[str]:
@@ -106,16 +137,35 @@ class SlackChannel(Channel):
 
         self._socket_client.socket_mode_request_listeners.append(self._on_socket_event)
 
+        self._open_threadsafe_future_intake()
         self._running = True
         self.bus.subscribe_outbound(self._on_outbound)
 
-        # Start socket mode in background thread
-        asyncio.get_event_loop().run_in_executor(None, self._socket_client.connect)
+        # Start socket mode in background thread. Go through
+        # ``_connect_socket_mode`` so a connect failure gets logged: nothing
+        # awaits the future ``run_in_executor`` returns, so an exception stored
+        # on it would never surface.
+        socket_client = self._socket_client
+        asyncio.get_event_loop().run_in_executor(None, self._connect_socket_mode, socket_client)
         logger.info("Slack channel started")
+
+    def _connect_socket_mode(self, socket_client: Any) -> None:
+        """Connect one start attempt's Socket Mode client if it is still current.
+
+        Mirrors the Telegram and Discord channels, whose background threads log
+        their errors instead of letting them vanish with the thread.
+        """
+        if socket_client is not self._socket_client:
+            return
+        try:
+            socket_client.connect()
+        except Exception:
+            logger.exception("[Slack] Socket Mode connection failed; the channel will not receive events")
 
     async def stop(self) -> None:
         self._running = False
         self.bus.unsubscribe_outbound(self._on_outbound)
+        await self._close_and_drain_threadsafe_futures()
         if self._socket_client:
             self._socket_client.close()
             self._socket_client = None
@@ -128,7 +178,7 @@ class SlackChannel(Channel):
 
         kwargs: dict[str, Any] = {
             "channel": msg.chat_id,
-            "text": _slack_md_converter.convert(msg.text),
+            "text": _slack_md_converter.convert(_escape_slack_text(msg.text)),
         }
         if msg.thread_ts:
             kwargs["thread_ts"] = msg.thread_ts
@@ -259,6 +309,8 @@ class SlackChannel(Channel):
 
     def _on_socket_event(self, client, req) -> None:
         """Called by slack-sdk for each Socket Mode event."""
+        if not self._running:
+            return
         try:
             # Acknowledge the event
             response = self._SocketModeResponse(envelope_id=req.envelope_id)
@@ -303,14 +355,18 @@ class SlackChannel(Channel):
         connect_code = self._pending_connect_code(text)
         if connect_code:
             if self._loop and self._loop.is_running():
-                asyncio.run_coroutine_threadsafe(
+                scheduled = self._submit_threadsafe_coroutine(
                     self._bind_connection_from_connect_code(
                         event=event,
                         team_id=str(team_id or ""),
                         code=connect_code,
                     ),
                     self._loop,
+                    name="bind_connection",
+                    msg_id=event.get("ts"),
                 )
+                if not scheduled:
+                    logger.info("[Slack] main loop stopped before channel connection bind could be scheduled")
             return
 
         # Check allowed users after connect-code handling so browser-initiated
@@ -346,18 +402,44 @@ class SlackChannel(Channel):
         inbound.topic_id = thread_ts
 
         if self._loop and self._loop.is_running():
+            reservation = self._reserve_inbound(inbound)
+            if reservation is None:
+                return
             # Acknowledge with an eyes reaction
             self._add_reaction(channel_id, event.get("ts", thread_ts), "eyes")
             # Send "running" reply first (fire-and-forget from SDK thread)
             self._send_running_reply(channel_id, thread_ts)
-            if self._connection_repo is None:
-                asyncio.run_coroutine_threadsafe(self.bus.publish_inbound(inbound), self._loop)
-            else:
-                asyncio.run_coroutine_threadsafe(self._publish_inbound_with_connection(inbound, team_id=team_id), self._loop)
+            try:
+                if self._connection_repo is None:
+                    # Reservation bounds callbacks scheduled from the SDK
+                    # thread; no coroutine/Future waits for queue capacity.
+                    self._loop.call_soon_threadsafe(self._commit_reserved_inbound, reservation, inbound)
+                else:
+                    scheduled = self._submit_threadsafe_coroutine(
+                        self._publish_inbound_with_connection(inbound, reservation=reservation, team_id=team_id),
+                        self._loop,
+                        name="publish_inbound",
+                        msg_id=event.get("ts", thread_ts),
+                        reservation=reservation,
+                    )
+                    if not scheduled:
+                        logger.info("[Slack] main loop stopped before reserved inbound could be scheduled")
+            except RuntimeError:
+                reservation.release()
+                logger.info("[Slack] main loop stopped before reserved inbound could be scheduled")
 
-    async def _publish_inbound_with_connection(self, inbound, *, team_id: str | None = None) -> None:
-        inbound = await self._attach_connection_identity(inbound, team_id=team_id)
-        await self.bus.publish_inbound(inbound)
+    async def _publish_inbound_with_connection(
+        self,
+        inbound,
+        *,
+        reservation: InboundReservation,
+        team_id: str | None = None,
+    ) -> None:
+        try:
+            inbound = await self._attach_connection_identity(inbound, team_id=team_id)
+            self._commit_reserved_inbound(reservation, inbound)
+        finally:
+            reservation.release()
 
     async def _attach_connection_identity(self, inbound, *, team_id: str | None = None):
         workspace_id = str(team_id or inbound.metadata.get("team_id") or "")

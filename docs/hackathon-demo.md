@@ -111,7 +111,7 @@ If the frontend demo prompt is questioned:
 
 ```powershell
 cd frontend
-pnpm test tests/unit/core/extensions/browser.test.ts tests/unit/core/extensions/api.test.ts
+pnpm test tests/unit/core/internal-registry/browser.test.ts tests/unit/core/internal-registry/api.test.ts
 ```
 
 If trace persistence or export is questioned:

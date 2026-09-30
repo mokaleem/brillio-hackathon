@@ -558,7 +558,9 @@ test.describe("Hackathon demo flow", () => {
       .getByRole("listitem")
       .filter({ has: page.getByText("forecast-export", { exact: true }) });
     await forecastRow.getByRole("button", { name: "Remove import" }).click();
-    await expect(page.getByText("Forecast Export", { exact: true })).toBeHidden();
+    await expect(
+      page.getByText("Forecast Export", { exact: true }),
+    ).toBeHidden();
 
     await page.goto("/workspace/chats/new");
 

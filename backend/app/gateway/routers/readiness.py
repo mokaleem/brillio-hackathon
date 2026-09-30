@@ -20,8 +20,8 @@ from app.gateway.deps import require_admin_user
 from deerflow.config.app_config import get_app_config
 from deerflow.config.paths import Paths
 from deerflow.config.tracing_config import get_tracing_config
-from deerflow.extensions import validate_extension_registry
-from deerflow.extensions.policy import (
+from deerflow.internal_registry import validate_extension_registry
+from deerflow.internal_registry.policy import (
     REQUIRE_HIGH_RISK_APPROVAL_ENV_VAR,
     RUNTIME_RISK_ENV_VAR,
     ExtensionPermissionError,

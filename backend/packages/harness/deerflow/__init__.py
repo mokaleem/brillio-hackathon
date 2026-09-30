@@ -5,7 +5,7 @@ from typing import Any
 
 from deerflow.artifacts import generate_csv_file, generate_html_report, generate_pdf_report
 from deerflow.audit import audit_log_path, record_extension_execution
-from deerflow.extensions import (
+from deerflow.internal_registry import (
     ExtensionCatalog,
     ExtensionDescriptor,
     ExtensionKind,

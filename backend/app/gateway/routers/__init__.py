@@ -1,3 +1,37 @@
-from . import artifacts, assistants_compat, audit, extensions, mcp, models, readiness, skills, suggestions, thread_runs, threads, uploads
+from . import (
+    artifacts,
+    assistants_compat,
+    audit,
+    browser,
+    extensions,
+    input_polish,
+    mcp,
+    models,
+    readiness,
+    scheduled_tasks,
+    skills,
+    subagent_batches,
+    suggestions,
+    thread_runs,
+    threads,
+    uploads,
+)
 
-__all__ = ["artifacts", "assistants_compat", "audit", "extensions", "mcp", "models", "readiness", "skills", "suggestions", "threads", "thread_runs", "uploads"]
+__all__ = [
+    "artifacts",
+    "assistants_compat",
+    "audit",
+    "browser",
+    "extensions",
+    "input_polish",
+    "mcp",
+    "models",
+    "readiness",
+    "scheduled_tasks",
+    "skills",
+    "subagent_batches",
+    "suggestions",
+    "threads",
+    "thread_runs",
+    "uploads",
+]
