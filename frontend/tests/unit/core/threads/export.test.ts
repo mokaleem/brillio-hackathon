@@ -53,7 +53,6 @@ function toolMsg(content: string): Message {
   } as unknown as Message;
 }
 
-
 function makeThreadWithTimeline(): AgentThread {
   return {
     ...makeThread(),

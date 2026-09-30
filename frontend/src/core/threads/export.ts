@@ -205,7 +205,7 @@ export function formatThreadAsJSON(
     messages: visibleMessages(messages, options)
       .map((msg) => buildJSONMessage(msg, options))
       .filter((m): m is JSONExportMessage => m !== null),
-    ...(options.includeTimeline ?? true
+    ...((options.includeTimeline ?? true)
       ? {
           run_timeline_events: readRunTimelineEvents(
             thread.values.run_timeline_events,

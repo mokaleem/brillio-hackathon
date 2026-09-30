@@ -202,7 +202,8 @@ test("captures hackathon release evidence screenshots", async ({ page }) => {
           enabled: true,
           source: "registry",
           entrypoint: "internal_tools.forecast:export",
-          description: "Exports a forecast table for the imported registry demo.",
+          description:
+            "Exports a forecast table for the imported registry demo.",
           tags: ["forecast"],
           metadata: {},
           requires: [],
@@ -214,7 +215,9 @@ test("captures hackathon release evidence screenshots", async ({ page }) => {
     }),
   );
   await page.getByRole("button", { name: /Preview/i }).click();
-  await expect(page.getByText("Forecast Export", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Forecast Export", { exact: true }),
+  ).toBeVisible();
   await page.getByLabel("Import Extension Registry").screenshot({
     path: path.join(evidenceDir, "hackathon-import-preview.png"),
   });
@@ -223,23 +226,27 @@ test("captures hackathon release evidence screenshots", async ({ page }) => {
   const textarea = page.getByPlaceholder(/how can i assist you/i);
   await expect(textarea).toBeVisible();
   await page.getByRole("button", { name: /Capabilities/i }).click();
-  await expect(page.getByText("Hackathon demo flow", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Hackathon demo flow", { exact: true }),
+  ).toBeVisible();
   await page.screenshot({
     path: path.join(evidenceDir, "hackathon-chat-capabilities.png"),
     fullPage: true,
   });
 
   await page.goto(`/workspace/chats/${threadId}`);
-  await expect(page.getByRole("button", { name: /Artifact Center/i })).toBeVisible();
+  await expect(page.getByTestId("artifact-trigger")).toBeVisible();
   await page.getByRole("button", { name: "Open run timeline" }).click();
-  await expect(page.getByRole("heading", { name: "Run Timeline" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Run Timeline" }),
+  ).toBeVisible();
   await page.screenshot({
     path: path.join(evidenceDir, "hackathon-run-trace.png"),
     fullPage: true,
   });
   await page.keyboard.press("Escape");
 
-  await page.getByRole("button", { name: /Artifact Center/i }).click();
+  await page.getByTestId("artifact-trigger").click();
   await expect(page.getByText("html-report-hackathon.html")).toBeVisible();
   await page.screenshot({
     path: path.join(evidenceDir, "hackathon-artifact-center.png"),

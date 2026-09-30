@@ -38,9 +38,9 @@ export const ArtifactTrigger = () => {
         }}
       >
         <FilesIcon />
+        {/* Icon-only on mobile, like upstream, so the header never overflows. */}
         <span className="hidden sm:inline">Artifact Center</span>
-        <span className="inline sm:hidden">{t.common.artifacts}</span>
-        <span className="bg-muted text-muted-foreground rounded px-1.5 font-mono text-[10px]">
+        <span className="bg-muted text-muted-foreground hidden rounded px-1.5 font-mono text-[10px] sm:inline">
           {summary.total}
         </span>
       </Button>

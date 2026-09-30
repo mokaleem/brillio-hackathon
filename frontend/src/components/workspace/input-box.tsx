@@ -425,8 +425,10 @@ export function InputBox({
   const insertCapabilityPrompt = useCallback(
     (prompt: string) => {
       const current = (textInput.value ?? "").trimEnd();
-      const nextValue = current ? `${current}
-${prompt}` : prompt;
+      const nextValue = current
+        ? `${current}
+${prompt}`
+        : prompt;
       textInput.setInput(nextValue);
       requestAnimationFrame(() => {
         const textarea = textareaRef.current;

@@ -48,9 +48,7 @@ describe("loadAuditExecutions", () => {
       count: 1,
       records: [{ extension: { name: "html-report" } }],
     });
-    expect(mockedFetch).toHaveBeenCalledWith(
-      "/api/audit/executions?limit=10",
-    );
+    expect(mockedFetch).toHaveBeenCalledWith("/api/audit/executions?limit=10");
   });
 
   test("defaults missing response fields", async () => {

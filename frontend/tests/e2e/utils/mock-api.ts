@@ -519,6 +519,20 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     return route.fallback();
   });
 
+  // Fork: the composer's capability menu reads the internal registry catalog.
+  // Specs that exercise the registry register their own route afterwards,
+  // which takes precedence over this empty default.
+  void page.route("**/api/extensions", (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ extensions: [] }),
+      });
+    }
+    return route.fallback();
+  });
+
   void page.route("**/api/suggestions/config", (route) => {
     if (route.request().method() === "GET") {
       return route.fulfill({
