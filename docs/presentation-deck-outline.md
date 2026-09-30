@@ -53,8 +53,9 @@ Demo proof:
 
 ## Slide 6: Agents
 
-Message: Internal agents can be added as importable factories under
-`internal_agents/`.
+Message: Internal agents are declared in the registry: tool groups, skills,
+and persona live in descriptor metadata, and the agent is available in chat
+like any custom agent.
 
 Example: `reporting-agent` coordinates report/export workflows.
 

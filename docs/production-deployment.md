@@ -133,6 +133,12 @@ signed artifacts, or read-only platform volumes owned by the release pipeline.
 
 ## Kubernetes Guidance
 
+Upstream DeerFlow ships a Helm chart at `deploy/helm/deer-flow` (Gateway,
+frontend, nginx, and provisioner). Start from that chart and add this fork's
+registry settings, the `DEERFLOW_EXTENSION_*` variables and read-only registry
+and `internal_*` mounts, through its values file. The guidance below lists
+what those values need to cover.
+
 Use separate Deployments for the UI and Gateway. Keep public ingress pointed at
 the UI unless your security model requires a direct Gateway origin. In the
 same-origin mode, the UI proxies `/api/*` to the internal Gateway service.
@@ -185,6 +191,9 @@ Production operators must decide which layer owns retention:
   cleanup lifecycle.
 - Confirm `GET /api/readiness` does not report retention warnings before
   release.
+- Schedule the sweep yourself. The Gateway does not run run-event or artifact
+  retention automatically. Run `deerflow.sweep_retention_policy(...)` from a
+  Kubernetes CronJob, a scheduled container task, or a Gateway extension.
 
 ## Release Validation
 
@@ -200,7 +209,10 @@ python scripts\release_smoke.py --skip-e2e
 `scripts\dependency_audit.py` exports the backend lock with `uv export --locked`
 and runs `pnpm audit --prod --audit-level high` against frontend production
 dependencies. High/critical findings must be fixed or represented by a
-short-lived entry in `docs/security/dependency-audit-baseline.json`. Set
+short-lived entry in `docs/security/dependency-audit-baseline.json`. As of
+2026-09-30 this gate fails: the baseline expired on 2026-08-15 and new advisories
+are unapproved. See the Dependency Audit Gate section of
+`docs/enterprise-readiness.md`. Set
 `DEERFLOW_RUN_PIP_AUDIT=1` when the release environment is allowed to run the
 networked Python `pip-audit` check.
 

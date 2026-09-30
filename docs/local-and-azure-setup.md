@@ -68,7 +68,7 @@ Recommended Azure services:
 | Layer | Azure service | Notes |
 | --- | --- | --- |
 | Frontend | Azure Container Apps or Azure App Service for Containers | Next.js UI. Keep browser traffic pointed here. |
-| Gateway | Azure Container Apps or AKS | Python Gateway API plus harness package. Use one worker unless a shared stream bridge is introduced. |
+| Gateway | Azure Container Apps or AKS | Python Gateway API plus harness package. Start with one replica and one worker. Multiple workers or replicas need PostgreSQL plus the Redis stream bridge and run-ownership settings in `config.example.yaml`. |
 | Images | Azure Container Registry | Store immutable frontend and Gateway images. |
 | Secrets | Azure Key Vault | Store model keys, auth secrets, LangSmith/Langfuse keys, and registry source secrets. |
 | Storage | Azure Files, Azure Blob, or mounted persistent volume | Back `DEER_FLOW_HOME`, generated artifacts, and run event storage. |

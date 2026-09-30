@@ -128,7 +128,7 @@ GATEWAY_PORT="8001"
 GATEWAY_ENABLE_DOCS="false"
 GATEWAY_CORS_ORIGINS="https://assistant.example.com"
 DEER_FLOW_CONFIG_PATH="/etc/deerflow/config.yaml"
-DEER_FLOW_EXTENSIONS_CONFIG_PATH="/etc/deerflow/internal_registry_config.json"
+DEER_FLOW_EXTENSIONS_CONFIG_PATH="/etc/deerflow/extensions_config.json"
 DEER_FLOW_AUTH_DISABLED="0"
 ```
 

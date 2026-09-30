@@ -60,11 +60,20 @@ Register it:
 
 ## Add an Agent Inside the Codebase
 
-1. Create a module under `internal_agents/`.
-2. Expose an importable factory such as `create_agent`.
-3. Keep the factory lightweight. It should return metadata/specification or a
-   harness-compatible agent object, depending on the target runtime.
-4. Register the factory as `module:function`.
+A registry agent behaves like a custom agent. Its settings come from the
+descriptor's `metadata`, not from Python code. When a chat targets an agent name
+that is not in the agent store, the runtime falls back to the enabled registry
+descriptor with that name. `model`, `tool_groups`, and `skills` are read from
+`metadata.config` or top-level `metadata`. The persona comes from
+`metadata.soul` or a repo-relative `metadata.soul_path`.
+
+1. Add the descriptor with `tool_groups`, `skills`, and `soul` in `metadata`.
+2. Optionally create a module under `internal_agents/` and register an
+   importable factory such as `create_agent` as `module:function`. SDK callers
+   can resolve it with `materialize_agent_factory()`, but the chat runtime does
+   not call it.
+3. Chat with the agent at `/workspace/agents/<name>/chats/new`, or pick it from
+   the composer capability menu.
 
 Example:
 

@@ -64,8 +64,9 @@ Register it in a manifest:
 ## Skill Activation
 
 Users can activate skills naturally through chat when the lead agent determines
-the skill is relevant. Enabled skills can also be made visible in the capability
-menu through registry metadata.
+the skill is relevant. Enabled registry skills also appear in the chat
+composer's capability menu. Picking one inserts `/<skill-name> ` into the draft,
+or the skill's `metadata.prompt_template` if it has one.
 
 For explicit slash-style use in supported flows:
 

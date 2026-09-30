@@ -103,6 +103,11 @@ The harness exposes SDK-level sweep helpers in `deerflow.retention` so gateway
 jobs, deployment cron jobs, or enterprise schedulers can apply the same policy
 without coupling cleanup logic to the UI.
 
+As of 2026-09-30, nothing calls these helpers on a schedule. The Gateway only
+runs its own project-trash sweep at startup, and `/api/readiness` only reports
+the configured windows. A deployment that relies on these settings needs its
+own job that calls `deerflow.sweep_retention_policy(...)`.
+
 ### Audit Evidence Export
 
 The gateway exposes `GET /api/audit/evidence` for admin users. It returns a
@@ -171,8 +176,17 @@ The gate does three things:
 
 Known frontend transitive findings are tracked in
 `docs/security/dependency-audit-baseline.json` with an owner, reason, and expiry.
-The current baseline covers Nextra docs-rendering dependencies that cannot be
-patched directly without a compatible upstream release. New high/critical
+The baseline was written for Nextra docs-rendering dependencies that could not
+be patched directly without a compatible upstream release.
+
+**Gate status on 2026-09-30: failing.** All six baseline entries expired on
+2026-08-15. Five are no longer reported by `pnpm audit`. The lodash-es entry is
+still reported and now fails as expired. After the upstream sync, `pnpm audit`
+also reports 12 unapproved high/critical advisories, in `next` (critical),
+`vite`, `brace-expansion`, `image-size`, and `langsmith`. These need upgrades
+or reviewed, short-lived exceptions before the next promotion.
+
+New high/critical
 findings must be fixed, upgraded away, or added to the baseline with an explicit
 short-lived exception before a production promotion.
 
@@ -198,6 +212,8 @@ evidence, and communication templates.
 | --- | --- | --- |
 | Demo env disables auth by default | High in production | Enterprise profile fails when `DEER_FLOW_AUTH_DISABLED` is truthy |
 | API docs are useful for demos but noisy for production | Medium | Enterprise profile fails when `GATEWAY_ENABLE_DOCS` is truthy |
-| External registries are code-adjacent config | High | Import guardrails, descriptor limits, prefix checks, and upcoming source allowlists |
-| Python function execution is high risk | High | Allowlist-only execution and enterprise wildcard rejection |
+| External registries are code-adjacent config | High | Import guardrails, descriptor limits, prefix checks, and `DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES` |
+| Python function execution can run arbitrary importable code | High | Allowlist-only execution and enterprise wildcard rejection |
+| Retention settings are not enforced automatically | Medium | Schedule `deerflow.sweep_retention_policy` in a deployment job |
+| Dependency audit baseline expired (2026-08-15) with new high/critical advisories | High | Upgrade affected frontend packages or add reviewed, short-lived exceptions |
 | Model credentials may be missing until demo time | Medium | Demo profile permits no-LLM smoke; enterprise profile requires a credential |

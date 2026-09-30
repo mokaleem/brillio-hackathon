@@ -39,6 +39,24 @@ The export includes execution status counts, extension metadata, artifact
 references, and sanitized records without raw registry manifests or full tool
 payloads.
 
+`GET /api/audit/executions` returns the most recent records for the
+**Execution Audit** panel on `/workspace/extensions`. Records come from the
+append-only log at `$DEER_FLOW_HOME/audit/executions.jsonl` (`./.deer-flow/audit/executions.jsonl` under the working directory when `DEER_FLOW_HOME` is unset). Every call to a
+registry tool writes one record, and rejected registry imports write
+`extension.import.rejected` records. Set `DEER_FLOW_AUDIT_LOG_PATH` to move the
+log, or `DEER_FLOW_AUDIT_DISABLED=1` to turn it off.
+
+## Run Trace in the UI
+
+When the Web UI starts a run, it requests the `events` stream mode. The Gateway
+then emits LangChain-shaped `on_run_start`, `on_run_end`, `on_run_error`, and
+orchestration chunk events next to the normal state snapshots. The chat's
+**Trace** dialog shows these events with model, tool, and capability-audit
+rows. When the run finishes, the UI makes a best-effort write of them to thread
+state as `run_timeline_events`. That way they survive a refresh and appear in
+Markdown and JSON exports. The frame shapes are
+pinned in `contracts/run_event_stream_contract.json`.
+
 ## LangSmith
 
 Add these values to `.env`, Container Apps secrets, or your platform secret
@@ -78,6 +96,13 @@ Langfuse trace correlation fields:
 If both LangSmith and Langfuse are enabled, DeerFlow attaches both callbacks.
 If a provider is explicitly enabled but misconfigured, tracing initialization
 fails fast and names the provider.
+
+## Other Upstream Tracing Options
+
+Upstream DeerFlow also supports Monocle tracing (`MONOCLE_TRACING`,
+`MONOCLE_EXPORTERS`) and request trace correlation across the Gateway and
+runs. See the "Request Trace Correlation" and "Monocle Tracing" sections of the
+root `README.md` for setup.
 
 ## Azure Observability
 

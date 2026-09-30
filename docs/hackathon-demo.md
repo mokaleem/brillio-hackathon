@@ -52,8 +52,8 @@ Open the workspace, then use the Extension Registry and chat capability menu:
 If model credentials are unavailable, prove the core registry and artifact path without an LLM:
 
 ```powershell
-cd backend
-uv run python ../scripts/demo_smoke.py
+make demo-smoke
+# or: cd backend; uv run python ../scripts/demo_smoke.py
 ```
 
 Expected output includes:

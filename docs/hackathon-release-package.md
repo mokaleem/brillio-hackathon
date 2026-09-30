@@ -6,6 +6,25 @@ Pull request: https://github.com/mokaleem/brillio-hackathon/pull/1
 Head branch: `dev`
 Status: Ready PR, mergeable; latest GitHub Actions checks are green on `28ee4fe0`.
 
+> **Status update (2026-09-30):** This package records the release as it stood
+> on 2026-06-30. PR #1 merged that day. Later changes:
+>
+> - **PRs #2–#11 (2026-07-01):** enterprise readiness gates, audit of rejected
+>   imports, `GET /api/readiness`, high-risk approval policy, retention
+>   settings, audit evidence export, production deployment guide, health
+>   checks, dependency audit gate, and release operations runbook. See
+>   [enterprise-readiness.md](enterprise-readiness.md).
+> - **PRs #12–#14:** setup, platform, and use-case documentation.
+> - **PR #19:** the harness package moved from `deerflow.extensions` to
+>   `deerflow.internal_registry` (frontend: `core/internal-registry`), so it
+>   no longer collides with upstream's plugin system. API routes and
+>   `DEERFLOW_EXTENSION_*` variables are unchanged.
+> - **PR #20:** merged 1,231 upstream DeerFlow commits.
+>
+> Commit hashes and the "Known Warnings" line below refer to the June release.
+> For current behavior, see the README's "Internal Extension Registry" section
+> and [internal-registry.md](internal-registry.md).
+
 This package is the ready-to-share PR and release brief for the internal DeerFlow assistant demo. It is scoped to the configurable harness, dynamic capability registry, separated UI layer, and hackathon judge path.
 
 Judge rehearsal runbook: `docs/hackathon-judge-runbook.md`

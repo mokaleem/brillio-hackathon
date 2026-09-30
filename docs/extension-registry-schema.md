@@ -77,12 +77,12 @@ Unknown fields are rejected. Extension names must be lowercase hyphen-case with 
 | `name` | string | Yes | Stable hyphen-case id. Used in duplicate detection and capability prompts. |
 | `enabled` | boolean | No | Defaults to `false`. Imported selected descriptors are enabled by the gateway. |
 | `source` | `local`, `registry`, `package`, `url` | No | Defaults to `local`; non-local sources produce import warnings. |
-| `entrypoint` | string or null | Depends on kind | Python `module:function` for agents/tools; repo-relative path for skills; usually omitted for MCP descriptors. |
+| `entrypoint` | string or null | Depends on kind | Python `module:function` for tools (required) and agents; repo-relative directory for skills (required); omitted for MCP descriptors. |
 | `description` | string | No | Displayed in registry and capability menus. |
 | `tags` | string array | No | Search/filter metadata. |
 | `metadata` | object | No | Kind-specific payload and UI prompt metadata. |
 | `allowed_tools` | string array or null | No | Skill/agent guardrail metadata. |
-| `requires` | string array | No | Human-readable dependency list. |
+| `requires` | string array | No | Other extensions this one depends on, as `name` or `kind:name`. Enabling it through the admin API fails if any dependency is missing or disabled. |
 | `owner` | string or null | No | Owning team/person. |
 | `risk_level` | `low`, `medium`, `high`, or null | No | Missing/high risk values produce import warnings. |
 | `display_name` | string or null | No | Friendly UI label. |
@@ -105,6 +105,15 @@ Imported descriptors are stamped with:
 ## Kind-Specific Notes
 
 Agents:
+
+A registry agent works like a custom agent. When a chat targets an agent name
+that is not in the agent store, the runtime uses the enabled descriptor with
+that name. `model`, `tool_groups`, and `skills` are read from
+`metadata.config` or, failing that, from top-level `metadata`. The system
+prompt persona comes from `metadata.soul` (inline text) or
+`metadata.soul_path` (a repo-relative file). The `entrypoint` factory is available to SDK
+callers through `materialize_agent_factory()`. The chat runtime does not call
+it.
 
 ```json
 {
@@ -193,7 +202,7 @@ Set one or more manifest paths with the platform separator:
 $env:DEERFLOW_EXTENSION_MANIFESTS = "registries/internal_extensions.example.json"
 ```
 
-Relative paths resolve against the repository root. If unset, the gateway uses `registries/internal_extensions.example.json` and appends `registries/imported_extensions.json` when it exists.
+Relative paths resolve against the repository root. If unset, the gateway uses `registries/internal_extensions.example.json`. In both cases `registries/imported_extensions.json` is appended when it exists.
 
 Admin import writes selected descriptors to:
 

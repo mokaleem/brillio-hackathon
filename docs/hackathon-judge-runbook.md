@@ -1,6 +1,6 @@
 # Hackathon Judge Runbook
 
-Use this as the five-minute rehearsal script for PR #1. Keep the browser at 1440px width if possible, use `/workspace/extensions` first, and keep `docs/pr-evidence/` open as fallback proof if the live stack is slow.
+Use this as the five-minute rehearsal script for the internal assistant demo. The original feature work landed in PR #1 (merged 2026-06-30). Keep the browser at 1440px width if possible, use `/workspace/extensions` first, and keep `docs/pr-evidence/` open as fallback proof if the live stack is slow.
 
 ## Preflight
 
@@ -12,7 +12,7 @@ pnpm test:e2e tests/e2e/hackathon-demo.spec.ts --project=chromium --reporter=lis
 
 Confirm:
 
-- PR #1 is mergeable and the `Hackathon Quality Gate` checks are green.
+- The latest `Hackathon Quality Gate` run on `dev` is green.
 - `.env` or `docker/hackathon-demo.env` has the model key for live chat.
 - Evidence screenshots are present under `docs/pr-evidence/`.
 
@@ -133,11 +133,11 @@ uv run python ../scripts/demo_smoke.py
 If CI status is challenged:
 
 ```powershell
-gh pr checks 1 --repo mokaleem/brillio-hackathon
+gh run list --repo mokaleem/brillio-hackathon --workflow "Hackathon Quality Gate" --branch dev --limit 5
 ```
 
 ## Risk Notes
 
 - External registry JSON is code-adjacent configuration; keep production allowlists narrow.
-- The Python function tool is intentionally high-risk and allowlist-gated.
+- The Python function tool is registered as `medium` risk and can only call functions listed in `DEERFLOW_PYTHON_FUNCTION_ALLOWLIST`.
 - Evidence screenshots are not a substitute for the live flow, but they keep the pitch resilient if model credentials or Docker are unavailable.

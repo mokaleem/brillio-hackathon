@@ -10,9 +10,25 @@ The hackathon extension layer lives in the harness package under `packages/harne
 
 Company-owned extension implementations live outside the harness in `internal_agents/`, `internal_mcps/`, `internal_tools/`, and `internal_skills/`. Example manifests live under `registries/`, with `registries/internal_extensions.example.json` used by default.
 
-The Gateway exposes the catalog at `GET /api/extensions` and supports `?kind=agent|mcp|tool|skill`. Admin-only endpoints validate (`POST /api/extensions/validate`), reload/list (`POST /api/extensions/reload`), and toggle (`PUT /api/extensions/{kind}/{name}`) manifest entries. Override the manifest list with `DEERFLOW_EXTENSION_MANIFESTS` using the OS path separator.
+The Gateway exposes the catalog at `GET /api/extensions` and supports `?kind=agent|mcp|tool|skill`. Every other route is admin-only (`app/gateway/routers/extensions.py`):
 
-Enabled `tool` descriptors are materialized and appended by `deerflow.tools.tools.get_available_tools()`, after configured tools and before built-ins, MCP tools, and ACP tools. This keeps registry tools available to orchestration while preserving existing duplicate-name precedence.
+- `POST /api/extensions/validate` and `GET /api/extensions/health` check the configured manifests.
+- `POST /api/extensions/reload` reloads and lists them.
+- `PUT /api/extensions/{kind}/{name}` toggles an entry (`{"enabled": bool}`) after checking its `requires` dependencies.
+- `POST /api/extensions/import/preview`, `POST /api/extensions/import`, and `DELETE /api/extensions/imported/{kind}/{name}` manage entries imported from external registries. Imported entries are written to the gitignored `registries/imported_extensions.json`.
+
+The related admin routes `GET /api/audit/executions`, `GET /api/audit/evidence` (`routers/audit.py`), and `GET /api/readiness` (`routers/readiness.py`) report execution audit rows and deployment readiness.
+
+Override the manifest list with `DEERFLOW_EXTENSION_MANIFESTS` using the OS path separator. `registries/imported_extensions.json` is appended to the configured list whenever it exists.
+
+How each kind reaches the runtime:
+
+- **Tools**: enabled `tool` descriptors are materialized and appended by `deerflow.tools.tools.get_available_tools()`, after configured tools and before built-ins, MCP tools, and ACP tools. This keeps registry tools available to orchestration while preserving existing duplicate-name precedence. Each materialized tool is wrapped so every call writes an audit row (`deerflow/audit.py`) to `$DEER_FLOW_HOME/audit/executions.jsonl` (`./.deer-flow/audit/executions.jsonl` under the working directory when `DEER_FLOW_HOME` is unset) (override with `DEER_FLOW_AUDIT_LOG_PATH`, disable with `DEER_FLOW_AUDIT_DISABLED=1`).
+- **MCP servers**: `ExtensionsConfig.from_file()` merges enabled `mcp` descriptors into `mcp_servers`. Entries in `extensions_config.json` win on name collisions. `deerflow/mcp/cache.py` also watches the manifest files, so editing a manifest invalidates the MCP tool cache.
+- **Skills**: `LocalSkillStorage` includes enabled `skill` descriptors whose `entrypoint` is a repo-relative skill directory.
+- **Agents**: `load_agent_config()` falls back to enabled `agent` descriptors when the named custom agent is not in the agent store. `model`, `tool_groups`, and `skills` come from `metadata.config` or top-level `metadata`. `load_agent_soul()` reads `metadata.soul` or the repo-relative `metadata.soul_path`.
+
+Every materializer first calls `require_extension_runtime_permission()` (`internal_registry/policy.py`). Risk levels outside `DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS` (default `low,medium`; a missing level counts as `medium`) are blocked. `high` also needs `approval.status: "approved"` unless `DEERFLOW_EXTENSION_REQUIRE_HIGH_RISK_APPROVAL=false`.
 
 The run worker synthesizes `event: events` SSE frames when `events` is requested in stream mode. These frames carry LangChain-shaped orchestration events (`on_run_start`, chunk stream events, `on_run_end`) without dropping the normal `values` snapshots used by the UI.
 
@@ -21,6 +37,8 @@ The run worker synthesizes `event: events` SSE frames when `events` is requested
 `"events"` is registered as a fork-only public stream mode in `deerflow/runtime/stream_modes.py` and mapped to LangGraph's `updates` mode by `to_langgraph_stream_modes()`; without that entry the Gateway rejects the frontend's chat requests with `UnsupportedStreamModeError`.
 
 Report artifact helpers live under `packages/harness/deerflow/artifacts/` and currently provide `generate_html_report`, `generate_csv_file`, and `generate_pdf_report`.
+
+Retention helpers live in `deerflow.retention` (`sweep_retention_policy`, `sweep_run_events`, `sweep_generated_artifacts`). They take the retention windows as arguments. Pass them the values of `run_events.retention_days` and `run_events.artifact_retention_days`. The Gateway does not call them on a schedule. `/api/readiness` only reports the configured values.
 
 Package import hygiene: the `deerflow.agents` and `deerflow.subagents` package
 roots expose heavyweight graph/executor entrypoints lazily. The

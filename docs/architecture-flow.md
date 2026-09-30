@@ -91,7 +91,8 @@ flowchart TD
 
 - UI liveness: `GET /api/health`
 - Gateway liveness: `GET /health`
-- Operator readiness: authenticated `GET /api/readiness`
+- Operator readiness: admin-only `GET /api/readiness`
+- Audit: admin-only `GET /api/audit/executions` and `GET /api/audit/evidence`
 - Release readiness: `python scripts\production_readiness.py`
 - Full fast gate: `python scripts\release_smoke.py --skip-e2e`
 

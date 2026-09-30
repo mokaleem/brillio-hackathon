@@ -16,6 +16,16 @@ https://github.com/user-attachments/assets/a8bcadc4-e040-4cf2-8fda-dd768b999c18
 > [!NOTE]
 > **DeerFlow 2.0 is a ground-up rewrite.** It shares no code with v1. If you're looking for the original Deep Research framework, it's maintained on the [`1.x` branch](https://github.com/bytedance/deer-flow/tree/main-1.x) — contributions there are still welcome. Active development has moved to 2.0.
 
+> [!IMPORTANT]
+> **This repository is a fork of [bytedance/deer-flow](https://github.com/bytedance/deer-flow)** built for the Brillio hackathon. It turns DeerFlow into an internal company assistant while keeping in sync with upstream. On top of upstream DeerFlow it adds:
+>
+> - **Internal extension registry**: agents, MCP servers, tools, and skills declared in JSON manifests, with risk-level policy, admin enable/disable, and import from external registries. See [Internal Extension Registry](#internal-extension-registry).
+> - **Web UI additions**: an Extensions page, a capability menu in the chat composer, a run-trace timeline, and run traces in thread exports.
+> - **Enterprise operations**: execution audit log and evidence export, a `/api/readiness` endpoint, retention settings, and release gates (`make production-readiness`, `make release-smoke`, dependency audit).
+> - **Deployment**: a split UI/Gateway demo bundle, an Azure setup guide, and a harness that installs as a standalone SDK. See [Internal Assistant Setup](#internal-assistant-setup).
+>
+> The rest of this README is the upstream DeerFlow documentation, which still applies.
+
 ## Official Website
 
 Learn more and see **real demos** on our [**official website**](https://deerflow.tech).
@@ -80,8 +90,8 @@ DeerFlow has newly integrated the intelligent search and crawling toolset indepe
   - [From Deep Research to Super Agent Harness](#from-deep-research-to-super-agent-harness)
   - [Core Features](#core-features)
     - [Skills \& Tools](#skills--tools)
-    - [Internal Extension Registry](#internal-extension-registry)
       - [Claude Code Integration](#claude-code-integration)
+    - [Internal Extension Registry](#internal-extension-registry)
     - [Session Goals](#session-goals)
     - [Manual Context Compaction](#manual-context-compaction)
     - [Sub-Agents](#sub-agents)
@@ -179,10 +189,15 @@ files. See [Local and Azure Setup](docs/local-and-azure-setup.md) and
 Run these before demo or release:
 
 ```bash
-python scripts/production_readiness.py
+make production-readiness                 # or: python scripts/production_readiness.py
 python scripts/dependency_audit.py
-python scripts/release_smoke.py --skip-e2e
+python scripts/release_smoke.py --skip-e2e  # `make release-smoke` also runs the Playwright E2E gate
 ```
+
+Add `--dry-run` to `release_smoke.py` to print its commands without running them.
+While the stack is up, admins can also call `GET /api/readiness` for a live
+status of auth, model credentials, tracing, registry policy, artifact storage,
+and retention.
 
 For production-like environments, also run:
 
@@ -1558,20 +1573,6 @@ Rebuild with `make up` after changing the managed extension set. See
 
 Gateway-generated follow-up suggestions now normalize both plain-string model output and block/list-style rich content before parsing the JSON array response, so provider-specific content wrappers do not silently drop suggestions.
 
-### Internal Extension Registry
-
-This fork adds a manifest-driven internal extension layer for company deployments. Agents, MCP servers, tools, and skills can be declared in JSON manifests under `registries/` while their implementations live outside the harness in `internal_agents/`, `internal_mcps/`, `internal_tools/`, and `internal_skills/`.
-
-For a judge-friendly local demo, run `make demo-config`, add `OPENAI_API_KEY` to `.env`, verify with `make doctor`, then start with `make dev`. The demo bootstrap writes a minimal `config.yaml`, local extension state, and `registries/demo_extensions.json` without overwriting existing files. Run `make demo-smoke` to validate the demo registry and generate sample HTML, CSV, and PDF artifacts without calling an LLM. See `docs/hackathon-demo.md` for the full judge walkthrough and fallback commands.
-
-The reusable harness package exposes `deerflow.internal_registry` for loading manifests, resolving importable Python entrypoints, and querying enabled extensions. The Gateway exposes the same catalog over `GET /api/extensions`, with optional `?kind=agent|mcp|tool|skill` filtering, so the web UI or a separate UI codebase can discover available capabilities without importing backend code. Admin endpoints can validate, reload, and enable or disable manifest entries.
-
-Enabled MCP descriptors are merged into the runtime `ExtensionsConfig` before MCP clients are built, with explicit `extensions_config.json` entries taking precedence over registry defaults. Enabled tool descriptors are loaded into DeerFlow orchestration through `get_available_tools()`, alongside configured tools, built-ins, MCP tools, and ACP tools. The demo registry includes internal HTML, CSV, PDF, and allowlisted Python function tools as examples. Set `DEERFLOW_EXTENSION_MANIFESTS` to an OS-path-separator-delimited manifest list to override the default `registries/internal_extensions.example.json`.
-
-When clients request `streamMode: ["values", "messages-tuple", "custom", "events"]`, the gateway now emits LangChain-shaped `events` frames for run start/end and orchestration chunks, while continuing to stream state snapshots and final answers.
-
-Report helpers are available from `deerflow.artifacts` for generating HTML, CSV, and minimal PDF artifacts from Python code.
-
 The Web UI composer can polish draft input before sending. The rewrite runs as a short Gateway LLM request using the `input_polish` model configuration, keeps slash skill prefixes such as `/data-analysis`, and only replaces the local draft after the user clicks the polish button; it does not create a thread run or persist a message.
 
 When the agent asks for clarification, the Web UI shows the structured response card but keeps the normal composer available. Users can complete the card or send a free-form chat message to bypass it; that message closes the latest pending clarification and becomes the agent's next input. Accompanying answer text stays outside the execution steps panel, and answering the request keeps previously completed text in the conversation while the agent continues.
@@ -1657,6 +1658,72 @@ DEERFLOW_LANGGRAPH_URL=http://localhost:2026/api/langgraph  # LangGraph API
 ```
 
 See [`skills/public/claude-to-deerflow/SKILL.md`](skills/public/claude-to-deerflow/SKILL.md) for the full API reference.
+
+### Internal Extension Registry
+
+This fork adds a manifest-driven internal extension layer for company deployments. Agents, MCP servers, tools, and skills can be declared in JSON manifests under `registries/` while their implementations live outside the harness in `internal_agents/`, `internal_mcps/`, `internal_tools/`, and `internal_skills/`. The manifest format is documented in [Extension Registry Schema](docs/extension-registry-schema.md), and [Capability Development](docs/capability-development.md) walks through adding a new capability.
+
+For a judge-friendly local demo, run `make demo-config`, add `OPENAI_API_KEY` to `.env`, verify with `make doctor`, then start with `make dev`. The demo bootstrap writes a minimal `config.yaml`, local extension state, and `registries/demo_extensions.json` without overwriting existing files (pass `--force` to `scripts/bootstrap_demo.py` to regenerate them). Run `make demo-smoke` to validate the demo registry and generate sample HTML, CSV, and PDF artifacts without calling an LLM. See [docs/hackathon-demo.md](docs/hackathon-demo.md) for the full walkthrough and [docs/hackathon-judge-runbook.md](docs/hackathon-judge-runbook.md) for fallback commands.
+
+#### Runtime wiring
+
+The reusable harness package exposes `deerflow.internal_registry` for loading manifests, resolving importable Python entrypoints, and querying enabled extensions. Set `DEERFLOW_EXTENSION_MANIFESTS` to an OS-path-separator-delimited manifest list to override the default `registries/internal_extensions.example.json`.
+
+- **MCP servers** — enabled MCP descriptors are merged into the runtime `ExtensionsConfig` before MCP clients are built. Explicit `extensions_config.json` entries take precedence over registry defaults.
+- **Tools** — enabled tool descriptors are loaded through `get_available_tools()`, alongside configured tools, built-ins, MCP tools, and ACP tools. The demo registry ships internal HTML, CSV, PDF, and allowlisted Python function tools as examples. The Python runner only calls functions listed in `DEERFLOW_PYTHON_FUNCTION_ALLOWLIST`.
+- **Risk policy** — each descriptor carries a `risk_level`; a missing level counts as `medium`. Only levels listed in `DEERFLOW_EXTENSION_ALLOWED_RISK_LEVELS` (default `low,medium`) load at runtime, so high-risk descriptors are blocked by default even when enabled. Allowing `high` isn't enough on its own: each high-risk descriptor also needs `approval.status: "approved"`, unless `DEERFLOW_EXTENSION_REQUIRE_HIGH_RISK_APPROVAL=false`.
+- **Agents, skills** — an enabled registry agent acts as a custom agent. Its model, tool groups, skills, and persona come from descriptor `metadata`. Enabled registry skills are added to the skill loader from their repo-relative `entrypoint` directory.
+- **Report helpers** — `deerflow.artifacts` generates HTML, CSV, and minimal PDF artifacts from Python code.
+
+#### Web UI
+
+- **Extensions page** — **Extensions** in the sidebar opens `/workspace/extensions`. The page shows the registry with enabled/disabled counts per kind, filters by kind, and lets admins enable or disable entries and reload manifests. It also has a **Demo Observability** panel and an **Execution Audit** panel that lists recent capability executions.
+- **Registry import** — admins can paste an external registry manifest, preview what it adds or changes, and import only the entries they select. Imported entries are written to `registries/imported_extensions.json` and can be removed individually. `registries/external_registries.example.json` shows how to declare an external registry source.
+- **Composer capability menu** — when any capabilities are enabled, the chat composer gets a capability menu grouped by agents, tools, skills, and MCP servers. Picking one inserts a ready-made prompt. High-risk capabilities show an approval dialog first. With no enabled capabilities, the menu is hidden and the toolbar matches upstream.
+- **Run trace** — chats show a run-timeline dialog with the model, tool, chain, and capability-audit events of the current run. Markdown and JSON thread exports include the run trace by default.
+
+The Web UI requests `streamMode: ["values", "messages-tuple", "custom", "events"]`. For the `events` mode, the Gateway sends LangChain-shaped frames for run start, end, and error, plus orchestration chunks. State snapshots and final answers stream as before. The event shapes are pinned in `contracts/run_event_stream_contract.json`.
+
+#### Gateway API
+
+All routes except the catalog listing require an admin user.
+
+| Method & path | Purpose |
+| --- | --- |
+| `GET /api/extensions` | List the catalog; filter with `?kind=agent\|mcp\|tool\|skill` |
+| `POST /api/extensions/validate` | Validate the configured manifests |
+| `GET /api/extensions/health` | Registry load health, errors, and warnings |
+| `POST /api/extensions/reload` | Reload manifests from disk |
+| `PUT /api/extensions/{kind}/{name}` | Enable or disable an entry (`{"enabled": true}`) |
+| `POST /api/extensions/import/preview` | Diff an external manifest against the current catalog |
+| `POST /api/extensions/import` | Import the selected entries of an external manifest |
+| `DELETE /api/extensions/imported/{kind}/{name}` | Remove an imported entry |
+| `GET /api/audit/executions` | Recent capability execution records |
+| `GET /api/audit/evidence` | Exportable audit evidence bundle |
+| `GET /api/readiness` | Status of auth, model credentials, tracing, API docs, registry load and policy, artifact storage, and retention |
+
+Imports are limited by policy. Entrypoints must start with an allowed prefix, such as `internal_tools.` or `company_tools.`, and can't contain path traversal. Override the prefixes with `DEERFLOW_EXTENSION_IMPORT_ENTRYPOINT_PREFIXES`. Other limits are set by `DEERFLOW_EXTENSION_IMPORT_MAX_BYTES` (default 512 KiB), `DEERFLOW_EXTENSION_IMPORT_MAX_EXTENSIONS` (default 200), `DEERFLOW_EXTENSION_IMPORT_SCHEMA_VERSIONS` (default `1`), and `DEERFLOW_EXTENSION_IMPORT_ALLOWED_SOURCES`, which requires imported manifests to declare an allowed source.
+
+Execution audit records go to `$DEER_FLOW_HOME/audit/executions.jsonl` (`./.deer-flow/audit/executions.jsonl` under the working directory when `DEER_FLOW_HOME` is unset). Change the location with `DEER_FLOW_AUDIT_LOG_PATH`, or set `DEER_FLOW_AUDIT_DISABLED=1` to turn auditing off.
+
+#### Retention
+
+`run_events.retention_days` and `run_events.artifact_retention_days` in `config.yaml` (both default to 30) set the retention window for run events and generated artifacts. `GET /api/readiness` reports the values. The Gateway does not run these sweeps on a schedule. Call `deerflow.sweep_retention_policy` (or `sweep_run_events` / `sweep_generated_artifacts`) from your own job.
+
+#### Harness as an SDK
+
+`deerflow-harness` can be used as a standalone Python dependency without the Gateway or frontend. `backend/tests/test_harness_boundary.py` enforces that boundary. [examples/harness-sdk-consumer](examples/harness-sdk-consumer/README.md) builds the wheel, loads a registry manifest, and generates artifacts from an external service. See also [backend/packages/harness/README.md](backend/packages/harness/README.md).
+
+#### Quality gate
+
+`.github/workflows/hackathon-quality-gate.yml` runs on CI:
+
+- backend lint plus the registry, journal, and harness-boundary tests
+- `scripts/production_readiness.py`
+- frontend lint, typecheck, and the registry and timeline unit tests
+- the Playwright demo E2E test (`tests/e2e/hackathon-demo.spec.ts`)
+
+Screenshots from the evidence run are in `docs/pr-evidence/`.
 
 ### Chat Archive
 
@@ -2371,6 +2438,13 @@ See [backend/docs/TUI.md](backend/docs/TUI.md) for the full guide.
 - [Architecture and Flow](docs/architecture-flow.md) - System diagrams and runtime flow
 - [Presentation Deck Outline](docs/presentation-deck-outline.md) - 15 slide demo narrative
 - [Observability Guide](docs/observability.md) - Health, audit evidence, LangSmith, Langfuse, and Azure logging
+- [Hackathon Demo](docs/hackathon-demo.md) and [Judge Runbook](docs/hackathon-judge-runbook.md) - Demo walkthrough and fallback commands
+- [Split UI Deployment](docs/split-ui-deployment.md) - Running the UI and Gateway as separate services
+- [Enterprise Readiness](docs/enterprise-readiness.md) - Phased readiness plan: gates, registry security, runtime controls
+- [Extension Registry Schema](docs/extension-registry-schema.md) and [Internal Registry](docs/internal-registry.md) - Manifest format and registry layout
+- [Release Operations](docs/release-operations.md) - Release checklist, rollback decision tree, post-release evidence
+- [Hackathon Release Package](docs/hackathon-release-package.md) - Release summary, demo path, and verification results
+- [Use Case Template](docs/use-case-template.md) - Template for writing up a hackathon use case
 
 ## ⚠️ Security Notice
 
