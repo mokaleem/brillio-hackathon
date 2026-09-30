@@ -11,10 +11,12 @@ Exit codes:
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
 import sys
+import time
 from importlib import import_module
 from pathlib import Path
 from typing import Literal
@@ -24,6 +26,8 @@ from typing import Literal
 # ---------------------------------------------------------------------------
 
 Status = Literal["ok", "warn", "fail", "skip"]
+PNPM_SCRIPT_PATH = Path(__file__).resolve().with_name("pnpm.py")
+FRONTEND_DIR = PNPM_SCRIPT_PATH.parent.parent / "frontend"
 
 
 def _supports_color() -> bool:
@@ -99,6 +103,48 @@ def _split_use_path(use: str) -> tuple[str, str] | None:
     return module_name, attr_name
 
 
+def _load_json_object(path: Path) -> dict | None:
+    """Load a JSON object without letting malformed CLI state abort doctor."""
+    if not path.is_file():
+        return None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _has_non_empty_token(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+# Acceptance rules mirror backend/packages/harness/deerflow/models/credential_loader.py
+# (``load_codex_cli_credential``, ``_extract_claude_code_credential`` + ``is_expired``), which
+# stays the source of truth; keep the two in lockstep when the loader changes. The mirror is
+# deliberate: importing the loader could consume the one-shot
+# CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR handoff. Strictness differs on purpose in one
+# place -- doctor rejects a whitespace-only token that the runtime's truthiness check would
+# accept before failing at the provider.
+def _codex_auth_file_has_access_token(path: Path) -> bool:
+    data = _load_json_object(path)
+    if data is None:
+        return False
+    tokens = data.get("tokens")
+    nested_access_token = tokens.get("access_token") if isinstance(tokens, dict) else None
+    return any(_has_non_empty_token(value) for value in (data.get("access_token"), data.get("token"), nested_access_token))
+
+
+def _claude_credentials_file_has_access_token(path: Path) -> bool:
+    data = _load_json_object(path)
+    oauth = data.get("claudeAiOauth") if data is not None else None
+    if not isinstance(oauth, dict) or not _has_non_empty_token(oauth.get("accessToken")):
+        return False
+    expires_at = oauth.get("expiresAt", 0)
+    if isinstance(expires_at, bool) or not isinstance(expires_at, (int, float)):
+        return False
+    return expires_at <= 0 or time.time() * 1000 <= expires_at - 60_000
+
+
 # ---------------------------------------------------------------------------
 # Check result container
 # ---------------------------------------------------------------------------
@@ -165,18 +211,41 @@ def check_node() -> CheckResult:
 
 
 def check_pnpm() -> CheckResult:
-    candidates = [["pnpm"], ["pnpm.cmd"]]
-    if shutil.which("corepack"):
-        candidates.append(["corepack", "pnpm"])
-    for cmd in candidates:
-        if shutil.which(cmd[0]):
-            out = _run([*cmd, "-v"]) or ""
-            return CheckResult("pnpm", "ok", out)
-    return CheckResult(
-        "pnpm",
-        "fail",
-        fix="npm install -g pnpm   (or: corepack enable)",
-    )
+    try:
+        result = subprocess.run(
+            [sys.executable, str(PNPM_SCRIPT_PATH), "-v"],
+            cwd=FRONTEND_DIR,
+            capture_output=True,
+            text=True,
+            check=False,
+            shell=False,
+        )
+    except OSError as exc:
+        return CheckResult(
+            "pnpm",
+            "fail",
+            f"Unable to run pnpm resolver: {exc}",
+            fix="Install pnpm, or install Corepack and ensure it is on PATH",
+        )
+
+    stdout = (result.stdout or "").strip()
+    stderr = (result.stderr or "").strip()
+    if result.returncode != 0:
+        detail = "\n".join(part for part in (stderr, stdout) if part)
+        return CheckResult(
+            "pnpm",
+            "fail",
+            detail or f"pnpm resolver exited with status {result.returncode}",
+            fix="Install pnpm, or install Corepack and ensure it is on PATH",
+        )
+    if not stdout:
+        return CheckResult(
+            "pnpm",
+            "fail",
+            stderr or "pnpm resolver returned no version",
+            fix="Install pnpm, or install Corepack and ensure it is on PATH",
+        )
+    return CheckResult("pnpm", "ok", stdout)
 
 
 def check_uv() -> CheckResult:
@@ -202,6 +271,64 @@ def check_nginx() -> CheckResult:
         "fail",
         fix=("macOS:   brew install nginx\nUbuntu:  sudo apt install nginx\nWindows: use WSL or Docker mode"),
     )
+
+
+# Environment variables that choose which config file the Gateway loads.
+CONFIG_LOCATION_ENV_VARS = ("DEER_FLOW_CONFIG_PATH", "DEER_FLOW_PROJECT_ROOT")
+
+
+def _unquoted_dotenv_keys(env_path: Path) -> set[str]:
+    """Return the ``.env`` keys whose value is written without quotes."""
+    from dotenv.parser import parse_stream
+
+    with open(env_path, encoding="utf-8") as stream:
+        return {binding.key for binding in parse_stream(stream) if binding.key and binding.original.string.split("=", 1)[-1].lstrip()[:1] not in ("'", '"')}
+
+
+def resolve_config_path() -> tuple[Path, CheckResult | None]:
+    """Locate the config.yaml the Gateway would read.
+
+    Delegates to the harness resolver (``DEER_FLOW_CONFIG_PATH``, then
+    ``config.yaml`` under ``DEER_FLOW_PROJECT_ROOT``, then the legacy
+    backend/repository-root locations) so doctor checks the same file the
+    Gateway loads. When an environment override would stop the Gateway from
+    starting, returns the path it names (which does not exist) and a failed
+    ``config.yaml found`` result carrying the Gateway's error.
+    """
+    config_env = os.environ.get("DEER_FLOW_CONFIG_PATH")
+    default_path = Path(os.environ.get("DEER_FLOW_PROJECT_ROOT") or ".") / "config.yaml"
+    try:
+        from deerflow.config.app_config import AppConfig
+    except Exception as exc:
+        # Keep diagnosing a broken backend environment instead of crashing
+        # (any import-time failure, as in check_config_loadable); the
+        # YAML-only checks still run against the most likely path.
+        return Path(config_env) if config_env else default_path, CheckResult(
+            "config.yaml found",
+            "fail",
+            f"cannot import the DeerFlow harness to resolve it ({type(exc).__name__}: {exc})",
+            fix="Run 'make install'",
+        )
+
+    try:
+        return AppConfig.resolve_config_path(), None
+    except FileNotFoundError as exc:
+        if not config_env:
+            # Nothing at the default locations: a plain missing config.
+            return default_path, None
+        return Path(config_env), CheckResult(
+            "config.yaml found",
+            "fail",
+            str(exc),
+            fix="Point DEER_FLOW_CONFIG_PATH at an existing config.yaml, or unset it",
+        )
+    except ValueError as exc:
+        return Path(os.environ["DEER_FLOW_PROJECT_ROOT"]) / "config.yaml", CheckResult(
+            "config.yaml found",
+            "fail",
+            str(exc),
+            fix="Point DEER_FLOW_PROJECT_ROOT at the DeerFlow checkout, or unset it",
+        )
 
 
 def check_config_exists(config_path: Path) -> CheckResult:
@@ -255,7 +382,7 @@ def check_models_configured(config_path: Path) -> CheckResult:
         return CheckResult("models configured", "skip")
     try:
         data = _load_yaml_file(config_path)
-        models = data.get("models", [])
+        models = data.get("models") or []
         if models:
             return CheckResult("models configured", "ok", f"{len(models)} model(s)")
         return CheckResult(
@@ -301,7 +428,7 @@ def check_llm_api_key(config_path: Path) -> list[CheckResult]:
         with open(config_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
-        for model in data.get("models", []):
+        for model in data.get("models") or []:
             # Collect all values that look like $ENV_VAR references
             def _collect_env_refs(obj: object) -> list[str]:
                 refs: list[str] = []
@@ -348,7 +475,7 @@ def check_llm_package(config_path: Path) -> list[CheckResult]:
             data = yaml.safe_load(f) or {}
 
         seen_packages: set[str] = set()
-        for model in data.get("models", []):
+        for model in data.get("models") or []:
             use = model.get("use", "")
             if ":" in use:
                 package_path = use.split(":")[0]
@@ -383,13 +510,13 @@ def check_llm_auth(config_path: Path) -> list[CheckResult]:
     results: list[CheckResult] = []
     try:
         data = _load_yaml_file(config_path)
-        for model in data.get("models", []):
+        for model in data.get("models") or []:
             use = model.get("use", "")
             model_name = model.get("name", "default")
 
             if use == "deerflow.models.openai_codex_provider:CodexChatModel":
                 auth_path = Path(os.environ.get("CODEX_AUTH_PATH", "~/.codex/auth.json")).expanduser()
-                if auth_path.exists():
+                if _codex_auth_file_has_access_token(auth_path):
                     results.append(CheckResult(f"Codex CLI auth available (model: {model_name})", "ok", str(auth_path)))
                 else:
                     results.append(
@@ -397,7 +524,7 @@ def check_llm_auth(config_path: Path) -> list[CheckResult]:
                             f"Codex CLI auth available (model: {model_name})",
                             "fail",
                             str(auth_path),
-                            fix="Run `codex login`, or set CODEX_AUTH_PATH to a valid auth.json",
+                            fix="Run `codex login`, or set CODEX_AUTH_PATH to an auth.json containing a valid access token",
                         )
                     )
 
@@ -405,7 +532,7 @@ def check_llm_auth(config_path: Path) -> list[CheckResult]:
                 credential_paths = [Path(os.environ["CLAUDE_CODE_CREDENTIALS_PATH"]).expanduser() for env_name in ("CLAUDE_CODE_CREDENTIALS_PATH",) if os.environ.get(env_name)]
                 credential_paths.append(Path("~/.claude/.credentials.json").expanduser())
                 has_oauth_env = any(
-                    os.environ.get(name)
+                    (os.environ.get(name) or "").strip()
                     for name in (
                         "ANTHROPIC_API_KEY",
                         "CLAUDE_CODE_OAUTH_TOKEN",
@@ -414,14 +541,16 @@ def check_llm_auth(config_path: Path) -> list[CheckResult]:
                     )
                 )
                 existing_path = next((path for path in credential_paths if path.exists()), None)
-                if has_oauth_env or existing_path is not None:
-                    detail = "env var set" if has_oauth_env else str(existing_path)
+                valid_path = next((path for path in credential_paths if _claude_credentials_file_has_access_token(path)), None)
+                if has_oauth_env or valid_path is not None:
+                    detail = "env var set" if has_oauth_env else str(valid_path)
                     results.append(CheckResult(f"Claude auth available (model: {model_name})", "ok", detail))
                 else:
                     results.append(
                         CheckResult(
                             f"Claude auth available (model: {model_name})",
                             "fail",
+                            str(existing_path) if existing_path is not None else "",
                             fix=("Set ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN, or place credentials at ~/.claude/.credentials.json"),
                         )
                     )
@@ -448,7 +577,7 @@ def check_web_tool(config_path: Path, *, tool_name: str, label: str) -> CheckRes
 
         data = _load_yaml_file(config_path)
 
-        tool_entries = [t for t in data.get("tools", []) if t.get("name") == tool_name]
+        tool_entries = [t for t in (data.get("tools") or []) if isinstance(t, dict) and t.get("name") == tool_name]
         if not tool_entries:
             return CheckResult(
                 label,
@@ -459,7 +588,7 @@ def check_web_tool(config_path: Path, *, tool_name: str, label: str) -> CheckRes
 
         free_providers = {
             "web_search": {"ddg_search": "DuckDuckGo (no key needed)"},
-            "web_fetch": {"jina_ai": "Jina AI Reader (no key needed)"},
+            "web_fetch": {"jina_ai": "Jina AI Reader (no key needed)", "crawl4ai": "Crawl4AI (self-hosted, no key needed)"},
             "image_search": {"deerflow.community.image_search.tools": "DuckDuckGo Images (no key needed)"},
         }
         key_providers = {
@@ -471,23 +600,37 @@ def check_web_tool(config_path: Path, *, tool_name: str, label: str) -> CheckRes
                 "fastcrw": "CRW_API_KEY",
                 "brave": "BRAVE_SEARCH_API_KEY",
                 "serper": "SERPER_API_KEY",
+                "serply": "SERPLY_API_KEY",
+                "sofya": "SOFYA_API_KEY",
+                "tencent_wsa": "TENCENTCLOUD_WSA_APIKEY",
             },
             "web_fetch": {
                 "infoquest": "INFOQUEST_API_KEY",
                 "exa": "EXA_API_KEY",
                 "firecrawl": "FIRECRAWL_API_KEY",
                 "fastcrw": "CRW_API_KEY",
+                "sofya": "SOFYA_API_KEY",
+                "unbrowse": "UNBROWSE_API_KEY",
             },
             "image_search": {
+                "brave": "BRAVE_SEARCH_API_KEY",
                 "infoquest": "INFOQUEST_API_KEY",
                 "serper": "SERPER_API_KEY",
             },
+            "web_capture": {
+                "browserless": "BROWSERLESS_TOKEN",
+            },
+        }
+        key_fields = {
+            "web_capture": {
+                "browserless": "token",
+            },
         }
 
-        def _configured_key_detail(tool: dict, default_var: str) -> tuple[Status, str] | None:
-            api_key = tool.get("api_key")
-            if isinstance(api_key, str) and api_key.strip():
-                key = api_key.strip()
+        def _configured_key_detail(tool: dict, default_var: str, key_field: str = "api_key") -> tuple[Status, str] | None:
+            configured_key = tool.get(key_field)
+            if isinstance(configured_key, str) and configured_key.strip():
+                key = configured_key.strip()
                 if key.startswith("$"):
                     env_name = key[1:]
                     val = os.environ.get(env_name)
@@ -496,10 +639,14 @@ def check_web_tool(config_path: Path, *, tool_name: str, label: str) -> CheckRes
                     # The referenced var is unset; fall through to the default
                     # env var below, which tools use as a runtime fallback.
                 else:
-                    return ("warn", "literal api_key set in config")
+                    return ("warn", f"literal {key_field} set in config")
 
             val = os.environ.get(default_var)
             return ("ok", f"{default_var} set") if val and val.strip() else None
+
+        def _browserless_self_hosted(tool: dict) -> bool:
+            base_url = str(tool.get("base_url") or "http://localhost:3032").lower()
+            return "browserless.io" not in base_url
 
         for tool in tool_entries:
             use = tool.get("use", "")
@@ -511,7 +658,8 @@ def check_web_tool(config_path: Path, *, tool_name: str, label: str) -> CheckRes
             use = tool.get("use", "")
             for provider, var in key_providers.get(tool_name, {}).items():
                 if provider in use:
-                    key_status = _configured_key_detail(tool, var)
+                    key_field = key_fields.get(tool_name, {}).get(provider, "api_key")
+                    key_status = _configured_key_detail(tool, var, key_field=key_field)
                     if key_status:
                         status, detail = key_status
                         if status == "warn":
@@ -519,9 +667,11 @@ def check_web_tool(config_path: Path, *, tool_name: str, label: str) -> CheckRes
                                 label,
                                 "warn",
                                 f"{provider} ({detail})",
-                                fix=f"Move the API key to .env as {var}=<your-key> and reference it as ${var}",
+                                fix=f"Move the {key_field} to .env as {var}=<your-key> and reference it as ${var}",
                             )
                         return CheckResult(label, "ok", f"{provider} ({detail})")
+                    if tool_name == "web_capture" and provider == "browserless" and _browserless_self_hosted(tool):
+                        return CheckResult(label, "ok", "browserless (self-hosted, token optional)")
                     return CheckResult(
                         label,
                         "warn",
@@ -560,6 +710,10 @@ def check_web_fetch(config_path: Path) -> CheckResult:
     return check_web_tool(config_path, tool_name="web_fetch", label="web fetch configured")
 
 
+def check_web_capture(config_path: Path) -> CheckResult:
+    return check_web_tool(config_path, tool_name="web_capture", label="web capture configured")
+
+
 def check_image_search(config_path: Path) -> CheckResult:
     return check_web_tool(config_path, tool_name="image_search", label="image search configured")
 
@@ -593,7 +747,7 @@ def check_sandbox(config_path: Path) -> list[CheckResult]:
             ]
 
         sandbox_use = sandbox.get("use", "")
-        tools = data.get("tools", [])
+        tools = data.get("tools") or []
         tool_names = {tool.get("name") for tool in tools if isinstance(tool, dict)}
         results: list[CheckResult] = []
 
@@ -664,17 +818,30 @@ def check_env_file(project_root: Path) -> CheckResult:
 
 def main() -> int:
     project_root = Path(__file__).resolve().parents[1]
-    config_path = project_root / "config.yaml"
 
     # Load .env early so key checks work
     try:
-        from dotenv import load_dotenv
+        from dotenv import dotenv_values, load_dotenv
 
         env_path = project_root / ".env"
         if env_path.exists():
             load_dotenv(env_path, override=False)
+            # `make dev` (scripts/serve.sh) sources .env over the shell, so
+            # for the variables that choose the config file, .env wins.
+            unquoted = _unquoted_dotenv_keys(env_path)
+            for name, value in dotenv_values(env_path).items():
+                if name in CONFIG_LOCATION_ENV_VARS and value is not None:
+                    # `source` expands an unquoted leading `~`, not a quoted one.
+                    os.environ[name] = os.path.expanduser(value) if name in unquoted else value
     except ImportError:
         pass
+
+    # serve.sh then replaces an unset or empty runtime root with the
+    # checkout, so config resolution and the loadable check see what the
+    # Gateway sees.
+    if not os.environ.get("DEER_FLOW_PROJECT_ROOT"):
+        os.environ["DEER_FLOW_PROJECT_ROOT"] = str(project_root)
+    config_path, config_failure = resolve_config_path()
 
     print()
     print(bold("DeerFlow Health Check"))
@@ -696,7 +863,7 @@ def main() -> int:
     cfg_checks: list[CheckResult] = [
         check_env_file(project_root),
         check_frontend_env(project_root),
-        check_config_exists(config_path),
+        config_failure or check_config_exists(config_path),
         check_config_version(config_path, project_root),
         check_config_loadable(config_path),
         check_models_configured(config_path),
@@ -712,7 +879,12 @@ def main() -> int:
     sections.append(("LLM Provider", llm_checks))
 
     # ── Web Capabilities ─────────────────────────────────────────────────────
-    search_checks = [check_web_search(config_path), check_web_fetch(config_path), check_image_search(config_path)]
+    search_checks = [
+        check_web_search(config_path),
+        check_web_fetch(config_path),
+        check_web_capture(config_path),
+        check_image_search(config_path),
+    ]
     sections.append(("Web Capabilities", search_checks))
 
     # ── Sandbox ──────────────────────────────────────────────────────────────

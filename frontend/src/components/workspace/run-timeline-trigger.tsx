@@ -67,7 +67,7 @@ export function RunTimelineTrigger({
           <RouteIcon className="size-4" />
           <span className="hidden sm:inline">Trace</span>
           {events.length > 0 && (
-            <span className="text-muted-foreground font-mono text-[10px]">
+            <span className="text-muted-foreground hidden font-mono text-[10px] sm:inline">
               {events.length}
             </span>
           )}

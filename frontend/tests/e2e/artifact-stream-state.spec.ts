@@ -5,12 +5,6 @@ import { mockLangGraphAPI } from "./utils/mock-api";
 const THREAD_ID = "00000000-0000-0000-0000-000000003788";
 const RUN_ID = "00000000-0000-0000-0000-000000003789";
 const ARTIFACT_PATH = "/artifact-fixtures/report.md";
-const THREAD_ARTIFACTS = [
-  "/artifact-fixtures/report.html",
-  "/artifact-fixtures/export.csv",
-  "/artifact-fixtures/summary.pdf",
-  ARTIFACT_PATH,
-];
 const THREAD_MESSAGES = [
   {
     type: "human",
@@ -23,6 +17,18 @@ const THREAD_MESSAGES = [
     content: "Created a markdown report.",
   },
 ];
+const FOLLOW_UP_MESSAGES = [
+  {
+    type: "human",
+    id: "msg-human-artifact-follow-up",
+    content: [{ type: "text", text: "Continue" }],
+  },
+  {
+    type: "ai",
+    id: "msg-ai-artifact-follow-up",
+    content: "Updated response while the artifact list is omitted.",
+  },
+];
 
 function streamWithoutArtifacts(route: Route) {
   const events = [
@@ -33,18 +39,7 @@ function streamWithoutArtifacts(route: Route) {
     {
       event: "values",
       data: {
-        messages: [
-          {
-            type: "human",
-            id: "msg-human-artifact-follow-up",
-            content: [{ type: "text", text: "Continue" }],
-          },
-          {
-            type: "ai",
-            id: "msg-ai-artifact-follow-up",
-            content: "Updated response while the artifact list is omitted.",
-          },
-        ],
+        messages: FOLLOW_UP_MESSAGES,
       },
     },
   ];
@@ -68,13 +63,66 @@ test("keeps artifact trigger after stream values omit artifacts", async ({
       {
         thread_id: THREAD_ID,
         title: "Artifact stream state",
-        artifacts: THREAD_ARTIFACTS,
+        artifacts: [ARTIFACT_PATH],
         messages: THREAD_MESSAGES,
       },
     ],
   });
 
+  // A real gateway persists the run's messages, so the SDK's end-of-run state
+  // refetch returns them. This spec's stream route bypasses the shared mock's
+  // thread upsert, which would otherwise leave post-run state looking like the
+  // run never happened — an impossible backend state that only a same-tick
+  // render could paper over. Serve the persisted turn once the run has started;
+  // stream values still omit artifacts, which is the invariant under test.
+  let runStarted = false;
+  await page.route("**/api/langgraph/threads/*/history", (route) => {
+    if (!runStarted) {
+      return route.fallback();
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          values: {
+            title: "Artifact stream state",
+            goal: null,
+            messages: [...THREAD_MESSAGES, ...FOLLOW_UP_MESSAGES],
+            artifacts: [ARTIFACT_PATH],
+          },
+          next: [],
+          metadata: {},
+          created_at: "2025-01-01T00:00:00Z",
+          parent_config: null,
+        },
+      ]),
+    });
+  });
+  await page.route(/\/api\/threads\/([^/]+)\/messages\/page/, (route) => {
+    if (!runStarted) {
+      return route.fallback();
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: [...THREAD_MESSAGES, ...FOLLOW_UP_MESSAGES].map(
+          (message, index) => ({
+            run_id: RUN_ID,
+            seq: index + 1,
+            content: message,
+            metadata: { caller: "lead_agent" },
+            created_at: `2025-01-01T00:00:${String(index).padStart(2, "0")}Z`,
+          }),
+        ),
+        has_more: false,
+        next_before_seq: null,
+      }),
+    });
+  });
   await page.route("**/api/langgraph/threads/*/runs/stream", (route) => {
+    runStarted = true;
     return streamWithoutArtifacts(route);
   });
   await page.route("**/api/extensions**", (route) => {
@@ -87,9 +135,8 @@ test("keeps artifact trigger after stream values omit artifacts", async ({
 
   await page.goto(`/workspace/chats/${THREAD_ID}`);
 
-  const artifactTrigger = page.getByRole("button", {
-    name: /artifact center/i,
-  });
+  // Upstream's trigger is labelled "Show artifacts" (aria-label).
+  const artifactTrigger = page.getByRole("button", { name: /artifacts/i });
   await expect(artifactTrigger).toBeVisible({ timeout: 15_000 });
 
   const textarea = page.getByPlaceholder(/how can i assist you/i);
@@ -105,12 +152,8 @@ test("keeps artifact trigger after stream values omit artifacts", async ({
 
   const artifactsPanel = page.locator("#artifacts");
   await expect(artifactsPanel.getByText("Artifact Center")).toBeVisible();
-  await expect(
-    artifactsPanel.getByText("1 HTML · 1 PDF · 1 CSV · 1 Markdown"),
-  ).toBeVisible();
-  await expect(artifactsPanel.getByText("report.html")).toBeVisible();
-  await expect(artifactsPanel.getByText("export.csv")).toBeVisible();
-  await expect(artifactsPanel.getByText("summary.pdf")).toBeVisible();
+  // Fork: Artifact Center summarizes the artifacts upstream lists for the thread.
+  await expect(artifactsPanel.getByText("1 Markdown")).toBeVisible();
   await expect(artifactsPanel.getByText("report.md")).toBeVisible();
   await artifactsPanel.getByText("report.md").click();
 

@@ -102,6 +102,12 @@ export function CapabilityMenu({
     0,
   );
 
+  // Nothing to offer: keep the composer toolbar identical to upstream's so it
+  // does not wrap (and stays the same height as the side-chat composer).
+  if (enabledCount === 0) {
+    return null;
+  }
+
   const insertCapability = (extension: ExtensionDescriptor) => {
     if (requiresCapabilityApproval(extension)) {
       setPendingApproval(extension);
@@ -122,11 +128,12 @@ export function CapabilityMenu({
     <>
       <PromptInputActionMenu>
         <PromptInputActionMenuTrigger
+          aria-label="Capabilities"
           className="max-w-36 gap-1! px-2!"
           disabled={disabled}
         >
           <PackageOpenIcon className="size-3" />
-          <span className="hidden truncate text-xs font-normal sm:inline">
+          <span className="hidden truncate text-xs font-normal xl:inline">
             Capabilities
           </span>
           {enabledCount > 0 && (

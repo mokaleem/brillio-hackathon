@@ -32,6 +32,8 @@ export interface ExportOptions {
   includeTimeline?: boolean;
 }
 
+export type ThreadExportFormat = "markdown" | "json";
+
 function visibleMessages(
   messages: Message[],
   options: ExportOptions,
@@ -157,7 +159,8 @@ function buildJSONMessage(
 ): JSONExportMessage | null {
   // Run the same sanitiser the Markdown path uses so the JSON `content`
   // field never carries inline `<think>...</think>` wrappers, content-array
-  // thinking blocks, `<uploaded_files>` markers, or other internal payloads.
+  // thinking blocks, `<current_uploads>`/`<uploaded_files>` markers, or other
+  // internal payloads.
   const content = formatMessageContent(msg);
   const reasoning =
     options.includeReasoning && msg.type === "ai"
@@ -202,7 +205,7 @@ export function formatThreadAsJSON(
     messages: visibleMessages(messages, options)
       .map((msg) => buildJSONMessage(msg, options))
       .filter((m): m is JSONExportMessage => m !== null),
-    ...(options.includeTimeline ?? true
+    ...((options.includeTimeline ?? true)
       ? {
           run_timeline_events: readRunTimelineEvents(
             thread.values.run_timeline_events,
@@ -246,4 +249,16 @@ export function exportThreadAsJSON(thread: AgentThread, messages: Message[]) {
   const json = formatThreadAsJSON(thread, messages);
   const filename = `${sanitizeFilename(titleOfThread(thread))}.json`;
   downloadAsFile(json, filename, "application/json;charset=utf-8");
+}
+
+export function exportThread(
+  thread: AgentThread,
+  messages: Message[],
+  format: ThreadExportFormat,
+) {
+  if (format === "markdown") {
+    exportThreadAsMarkdown(thread, messages);
+  } else {
+    exportThreadAsJSON(thread, messages);
+  }
 }
